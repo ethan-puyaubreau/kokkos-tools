@@ -15,55 +15,60 @@
 //@HEADER
 
 #include <iostream>
+#include <fstream>
 #include "kp_core.hpp"
 
 namespace KokkosTools {
 namespace KernelPrinter {
 
+static std::ofstream kernel_info_file;
+
 void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
                          const uint32_t devInfoCount,
                          Kokkos_Profiling_KokkosPDeviceInfo* deviceInfo) {
-  std::cout << "KokkosP: Simple Kernel Printer Tool Initialized (sequence is " 
+  kernel_info_file.open("kokkos_kernels.info");
+  kernel_info_file << "KokkosP: Simple Kernel Printer Tool Initialized (sequence is " 
             << loadSeq << ", version: " << interfaceVer << ")" << std::endl;
 }
 
 void kokkosp_finalize_library() {
-  std::cout << "KokkosP: Simple Kernel Printer Tool Finalized" << std::endl;
+  kernel_info_file << "KokkosP: Simple Kernel Printer Tool Finalized" << std::endl;
+  kernel_info_file.close();
 }
 
 void kokkosp_begin_parallel_for(const char* name, const uint32_t devID,
                               uint64_t* kID) {
-  std::cout << "KokkosP: Starting parallel_for kernel: " << name << std::endl;
+  kernel_info_file << "KERNEL_TYPE: parallel_for, NAME: " << name << std::endl;
 }
 
 void kokkosp_end_parallel_for(const uint64_t kID) {
-  std::cout << "KokkosP: Ending parallel_for kernel" << std::endl;
+  kernel_info_file << "END_KERNEL: parallel_for" << std::endl;
 }
 
 void kokkosp_begin_parallel_scan(const char* name, const uint32_t devID,
                                uint64_t* kID) {
-  std::cout << "KokkosP: Starting parallel_scan kernel: " << name << std::endl;
+  kernel_info_file << "KERNEL_TYPE: parallel_scan, NAME: " << name << std::endl;
 }
 
 void kokkosp_end_parallel_scan(const uint64_t kID) {
-  std::cout << "KokkosP: Ending parallel_scan kernel" << std::endl;
+  kernel_info_file << "END_KERNEL: parallel_scan" << std::endl;
 }
 
 void kokkosp_begin_parallel_reduce(const char* name, const uint32_t devID,
                                  uint64_t* kID) {
-  std::cout << "KokkosP: Starting parallel_reduce kernel: " << name << std::endl;
+  kernel_info_file << "KERNEL_TYPE: parallel_reduce, NAME: " << name << std::endl;
 }
 
 void kokkosp_end_parallel_reduce(const uint64_t kID) {
-  std::cout << "KokkosP: Ending parallel_reduce kernel" << std::endl;
+  kernel_info_file << "END_KERNEL: parallel_reduce" << std::endl;
 }
 
 void kokkosp_push_profile_region(char const* regionName) {
-  std::cout << "KokkosP: Entering region: " << regionName << std::endl;
+  kernel_info_file << "KokkosP: Entering region: " << regionName << std::endl;
 }
 
 void kokkosp_pop_profile_region() {
-  std::cout << "KokkosP: Exiting region" << std::endl;
+  kernel_info_file << "KokkosP: Exiting region" << std::endl;
 }
 
 } // namespace KernelPrinter
