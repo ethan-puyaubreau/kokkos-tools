@@ -1,3 +1,5 @@
+PAPI_ROOT=/home/efp/devel/install/papi
+
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -g -I$(PAPI_ROOT)/include
 LDFLAGS=-L$(PAPI_ROOT)/lib

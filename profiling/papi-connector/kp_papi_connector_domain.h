@@ -21,7 +21,7 @@
 #include <sys/time.h>
 #include <cstring>
 
-#include "papi.h"
+#include "/home/efp/devel/install/papi/include/papi.h"
 
 struct SpaceHandle {
   char name[64];
