@@ -31,10 +31,10 @@ extern "C" void kokkosp_init_library(const int loadSeq,
                                      const uint64_t interfaceVer,
                                      const uint32_t devInfoCount,
                                      void* deviceInfo) {
-  printf("-----------------------------------------------------------\n");
-  printf("KokkosP: PAPI Connector (sequence is %d, version: %llu)\n", loadSeq,
-         interfaceVer);
-  printf("-----------------------------------------------------------\n");
+  std::cout << "-----------------------------------------------------------" << std::endl;
+  std::cout << "KokkosP: PAPI Connector (sequence is " << loadSeq
+            << ", version: " << interfaceVer << ")" << std::endl;
+  std::cout << "-----------------------------------------------------------" << std::endl;
 
   /* The following advanced functions of PAPI's high-level API are not part
    * of the official release. But they might be introduced in later PAPI
