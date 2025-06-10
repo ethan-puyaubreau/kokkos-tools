@@ -1,7 +1,7 @@
 CXX=g++
 CXXFLAGS=-O3 -std=c++11 -g -I$(CUDA_ROOT)/include
-LDFLAGS=-L$(CUDA_ROOT)/lib64
-LIBS=-lnvToolsExt
+LDFLAGS=-L/usr/local/cuda-12.9/lib64
+LIBS=-lnvtx3interop
 SHARED_CXXFLAGS=-shared -fPIC
 
 all: kp_nvtx_connector.so

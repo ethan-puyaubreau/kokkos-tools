@@ -22,7 +22,7 @@
 
 #include <pthread.h>
 
-#include "nvtx3/nvToolsExt.h"
+#include "/usr/local/cuda-12.9/targets/x86_64-linux/include/nvtx3/nvToolsExt.h"
 
 #include "kp_core.hpp"
 
