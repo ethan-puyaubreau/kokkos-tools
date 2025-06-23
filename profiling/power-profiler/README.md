@@ -70,6 +70,10 @@ To use this profiler, you need to compile it as a Kokkos Tools library and then 
 * **Kokkos**: Ensure you have Kokkos installed and configured.
 * **Variorum**: The Variorum library must be installed on your system. This profiler links against `libvariorum`.
     * Set the `VARIORUM_ROOT` environment variable to the installation path of Variorum.
+    * **Important**: If Variorum is manually installed (not system-wide), add its library path to `LD_LIBRARY_PATH`:
+      ```bash
+      export LD_LIBRARY_PATH=$VARIORUM_ROOT/lib:$LD_LIBRARY_PATH
+      ```
 * **Jansson**: The Jansson C library for JSON parsing is required, as Variorum outputs data in JSON format.
 * **C++20 Compiler**: The profiler uses `std::jthread` which requires C++20.
 * **MPI Compiler**: The Makefile uses `mpicxx`, so an MPI-enabled C++ compiler is expected.
@@ -82,20 +86,22 @@ The provided `Makefile` simplifies the compilation process. Navigate to the dire
 make
 ```
 
-This will produce `power-profiler.so` in the same directory.
+This will produce `power-profiler.so` in the `build/` directory.
+
+Alternatively, you can use CMake if building as part of the larger kokkos-tools project:
 
 ### Running Your Kokkos Application with the Profiler
 
 To load the profiler with your Kokkos application, set the `KOKKOS_TOOLS_LIBS` environment variable to the path of the compiled shared library:
 
 ```bash
-export KOKKOS_TOOLS_LIBS=/path/to/power-profiler.so
+export KOKKOS_TOOLS_LIBS=/path/to/power-profiler/power-profiler.so
 ./your_kokkos_application
 ```
 
 The power and kernel timing data will be printed to standard output upon application finalization. You can redirect this output to a file for later analysis:
 
 ```bash
-export KOKKOS_TOOLS_LIBS=/path/to/power-profiler.so
+export KOKKOS_TOOLS_LIBS=/path/to/power-profiler/power-profiler.so
 ./your_kokkos_application | tee profiling_output.txt
 ```
