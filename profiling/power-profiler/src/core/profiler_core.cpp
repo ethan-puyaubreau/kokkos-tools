@@ -138,7 +138,8 @@ void PowerProfilerCore::setup_output_handler() {
     }
   } catch (const std::exception& e) {
     std::cerr << "PowerProfiler: Failed to create output handler: " << e.what()
-              << ". Falling back to console output." << "\n";
+              << ". Falling back to console output." 
+              << "\n";
     output_handler_ = OutputHandlerFactory::create(
         OutputHandlerFactory::HandlerType::CONSOLE);
   }

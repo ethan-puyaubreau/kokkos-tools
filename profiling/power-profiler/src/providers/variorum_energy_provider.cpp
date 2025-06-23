@@ -37,7 +37,8 @@ std::vector<uint32_t> VariorumEnergyProvider::get_available_devices() const {
 
   json_t* host_obj = json_object_iter_value(json_object_iter(root.get()));
   if (!host_obj) {
-    std::cerr << "PowerProfiler: No hostname object found in JSON." << "\n";
+    std::cerr << "PowerProfiler: No hostname object found in JSON." 
+    << "\n";
     return {};
   }
 
@@ -65,10 +66,12 @@ std::vector<uint32_t> VariorumEnergyProvider::get_available_devices() const {
         found_device_ids.insert(device_id);
       } catch (const std::invalid_argument& e) {
         std::cerr << "PowerProfiler: Could not parse GPU ID from key: " << s_key
-                  << " (" << e.what() << ")" << "\n";
+                  << " (" << e.what() << ")" 
+                  << "\n";
       } catch (const std::out_of_range& e) {
         std::cerr << "PowerProfiler: GPU ID out of range from key: " << s_key
-                  << " (" << e.what() << ")" << "\n";
+                  << " (" << e.what() << ")" 
+                  << "\n";
       }
     }
   }

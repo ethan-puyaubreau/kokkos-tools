@@ -23,7 +23,7 @@ target_include_directories(kp_power_profiler PRIVATE
 )
 
 # Set C++17 standard (minimum required for steady_clock and other features)
-target_compile_features(kp_power_profiler PRIVATE cxx_std_17)
+set(CMAKE_CXX_STANDARD 17)
 
 target_link_libraries(kp_power_profiler PRIVATE variorum::variorum)
 

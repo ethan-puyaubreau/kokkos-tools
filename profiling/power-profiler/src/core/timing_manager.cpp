@@ -26,7 +26,8 @@ void TimingManager::begin_kernel(uint64_t kernel_id, const std::string& name,
 
   if (active_kernels_.find(kernel_id) != active_kernels_.end()) {
     std::cerr << "Warning: Kernel ID " << kernel_id
-              << " already active. Overwriting." << "\n";
+              << " already active. Overwriting." 
+              << "\n";
   }
 
   active_kernels_[kernel_id] = KernelTiming(name, type, current_time);
@@ -55,7 +56,8 @@ void TimingManager::pop_region() {
     completed_regions_.push_back(std::move(active_regions_.back()));
     active_regions_.pop_back();
   } else {
-    std::cerr << "Warning: Attempting to pop region from empty stack" << "\n";
+    std::cerr << "Warning: Attempting to pop region from empty stack" 
+    << "\n";
   }
 }
 
