@@ -21,7 +21,7 @@
 #include <cstring>
 #include <iostream>
 
-#include "config.hpp"
+#include "core/config.hpp"
 #include "kp_core.hpp"
 #include "core/profiler_core.hpp"
 
