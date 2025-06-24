@@ -81,7 +81,7 @@ std::vector<uint32_t> VariorumEnergyProvider::get_available_devices() const {
 }
 
 EnergyReading VariorumEnergyProvider::get_current_reading() const {
-  auto current_time = std::chrono::steady_clock::now();
+  auto current_time = std::chrono::system_clock::now();
 
   std::map<uint32_t, double> power_readings =
       get_current_power_for_devices(available_devices_);

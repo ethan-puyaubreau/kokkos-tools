@@ -45,7 +45,7 @@ EnergyReading DummyEnergyProvider::get_current_reading() const {
     throw std::runtime_error("DummyEnergyProvider not initialized");
   }
 
-  auto timestamp = std::chrono::steady_clock::now();
+  auto timestamp = std::chrono::system_clock::now();
   std::map<uint32_t, double> device_powers;
 
   // Generate dummy power readings with some variance

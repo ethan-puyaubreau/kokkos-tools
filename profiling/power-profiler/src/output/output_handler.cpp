@@ -29,13 +29,13 @@ void ConsoleOutputHandler::output_power_data(
     const std::vector<EnergyReading>& readings) {
   std::cout << "\n--- POWER_DATA_START ---\n";
   std::cout
-      << "DATA TYPE : POWER_READING, TIMESTAMP_NS, DEVICE_ID, POWER_WATTS\n";
+      << "DATA TYPE : POWER_READING, TIMESTAMP_MS, DEVICE_ID, POWER_WATTS\n";
   if (readings.empty()) {
     std::cout << "POWER_READING_NONE\n";
   } else {
     for (const auto& reading : readings) {
       for (const auto& pair : reading.device_powers) {
-        std::cout << "POWER_READING," << reading.timestamp_ns() << ","
+        std::cout << "POWER_READING," << reading.timestamp_ms() << ","
                   << pair.first << "," << std::fixed << std::setprecision(2)
                   << pair.second << '\n';
       }
@@ -47,15 +47,15 @@ void ConsoleOutputHandler::output_power_data(
 void ConsoleOutputHandler::output_kernel_data(
     const std::vector<KernelTiming>& timings) {
   std::cout << "\n--- KERNEL_DATA_START ---\n";
-  std::cout << "DATA TYPE : KERNEL_TIMING, TYPE, NAME, START_TIME_NS, "
-               "END_TIME_NS, DURATION_NS\n";
+  std::cout << "DATA TYPE : KERNEL_TIMING, TYPE, NAME, START_TIME_MS, "
+               "END_TIME_MS, DURATION_MS\n";
   if (timings.empty()) {
     std::cout << "KERNEL_TIMING_NONE\n";
   } else {
     for (const auto& timing : timings) {
       std::cout << "KERNEL_TIMING," << kernel_type_to_string(timing.type)
-                << ",\"" << timing.name << "\"," << timing.start_time_ns()
-                << "," << timing.end_time_ns() << "," << timing.duration_ns()
+                << ",\"" << timing.name << "\"," << timing.start_time_ms()
+                << "," << timing.end_time_ms() << "," << timing.duration_ms_value()
                 << '\n';
     }
   }
@@ -65,15 +65,15 @@ void ConsoleOutputHandler::output_kernel_data(
 void ConsoleOutputHandler::output_region_data(
     const std::vector<RegionTiming>& timings) {
   std::cout << "\n--- REGION_DATA_START ---\n";
-  std::cout << "DATA TYPE : REGION_TIMING, NAME, START_TIME_NS, END_TIME_NS, "
-               "DURATION_NS\n";
+  std::cout << "DATA TYPE : REGION_TIMING, NAME, START_TIME_MS, END_TIME_MS, "
+               "DURATION_MS\n";
   if (timings.empty()) {
     std::cout << "REGION_TIMING_NONE\n";
   } else {
     for (const auto& timing : timings) {
       std::cout << "REGION_TIMING,\"" << timing.name << "\","
-                << timing.start_time_ns() << "," << timing.end_time_ns() << ","
-                << timing.duration_ns() << '\n';
+                << timing.start_time_ms() << "," << timing.end_time_ms() << ","
+                << timing.duration_ms_value() << '\n';
     }
   }
   std::cout << "--- REGION_DATA_END ---\n";
@@ -82,14 +82,14 @@ void ConsoleOutputHandler::output_region_data(
 void ConsoleOutputHandler::output_kernel_correlations(
     const std::vector<KernelEnergyCorrelation>& correlations) {
   std::cout << "\n--- ENERGY_CORRELATION_START ---\n";
-  std::cout << "DATA TYPE : KERNEL_ENERGY, NAME, DURATION_NS, "
+  std::cout << "DATA TYPE : KERNEL_ENERGY, NAME, DURATION_MS, "
                "TOTAL_ENERGY_JOULES, AVERAGE_POWER_WATTS\n";
   if (correlations.empty()) {
     std::cout << "KERNEL_ENERGY_NONE\n";
   } else {
     for (const auto& corr : correlations) {
       std::cout << "KERNEL_ENERGY,\"" << corr.kernel.name << "\","
-                << corr.kernel.duration_ns() << "," << std::fixed
+                << corr.kernel.duration_ms_value() << "," << std::fixed
                 << std::setprecision(6) << corr.total_energy_joules << ","
                 << corr.average_power_watts << '\n';
     }
@@ -100,14 +100,14 @@ void ConsoleOutputHandler::output_kernel_correlations(
 void ConsoleOutputHandler::output_region_correlations(
     const std::vector<RegionEnergyCorrelation>& correlations) {
   std::cout << "\n--- REGION_ENERGY_CORRELATION_START ---\n";
-  std::cout << "DATA TYPE : REGION_ENERGY, NAME, DURATION_NS, "
+  std::cout << "DATA TYPE : REGION_ENERGY, NAME, DURATION_MS, "
                "TOTAL_ENERGY_JOULES, AVERAGE_POWER_WATTS\n";
   if (correlations.empty()) {
     std::cout << "REGION_ENERGY_NONE\n";
   } else {
     for (const auto& corr : correlations) {
       std::cout << "REGION_ENERGY,\"" << corr.region.name << "\","
-                << corr.region.duration_ns() << "," << std::fixed
+                << corr.region.duration_ms_value() << "," << std::fixed
                 << std::setprecision(6) << corr.total_energy_joules << ","
                 << corr.average_power_watts << '\n';
     }
@@ -127,7 +127,7 @@ void JsonOutputHandler::output_power_data(
   for (size_t i = 0; i < readings.size(); ++i) {
     const auto& reading = readings[i];
     json << "    {\n";
-    json << "      \"timestamp_ns\": " << reading.timestamp_ns() << ",\n";
+    json << "      \"timestamp_ms\": " << reading.timestamp_ms() << ",\n";
     json << "      \"devices\": {\n";
 
     size_t device_count = 0;
@@ -158,9 +158,9 @@ void JsonOutputHandler::output_kernel_data(
     json << "      \"name\": \"" << timing.name << "\",\n";
     json << "      \"type\": \"" << kernel_type_to_string(timing.type)
          << "\",\n";
-    json << "      \"start_time_ns\": " << timing.start_time_ns() << ",\n";
-    json << "      \"end_time_ns\": " << timing.end_time_ns() << ",\n";
-    json << "      \"duration_ns\": " << timing.duration_ns() << "\n";
+    json << "      \"start_time_ms\": " << timing.start_time_ms() << ",\n";
+    json << "      \"end_time_ms\": " << timing.end_time_ms() << ",\n";
+    json << "      \"duration_ms\": " << timing.duration_ms_value() << "\n";
     json << "    }";
     if (i < timings.size() - 1) json << ",";
     json << "\n";
@@ -179,9 +179,9 @@ void JsonOutputHandler::output_region_data(
     const auto& timing = timings[i];
     json << "    {\n";
     json << "      \"name\": \"" << timing.name << "\",\n";
-    json << "      \"start_time_ns\": " << timing.start_time_ns() << ",\n";
-    json << "      \"end_time_ns\": " << timing.end_time_ns() << ",\n";
-    json << "      \"duration_ns\": " << timing.duration_ns() << "\n";
+    json << "      \"start_time_ms\": " << timing.start_time_ms() << ",\n";
+    json << "      \"end_time_ms\": " << timing.end_time_ms() << ",\n";
+    json << "      \"duration_ms\": " << timing.duration_ms_value() << "\n";
     json << "    }";
     if (i < timings.size() - 1) json << ",";
     json << "\n";
@@ -202,7 +202,7 @@ void JsonOutputHandler::output_kernel_correlations(
     json << "      \"name\": \"" << corr.kernel.name << "\",\n";
     json << "      \"type\": \"" << kernel_type_to_string(corr.kernel.type)
          << "\",\n";
-    json << "      \"duration_ns\": " << corr.kernel.duration_ns() << ",\n";
+    json << "      \"duration_ms\": " << corr.kernel.duration_ms_value() << ",\n";
     json << "      \"total_energy_joules\": " << std::fixed
          << std::setprecision(6) << corr.total_energy_joules << ",\n";
     json << "      \"average_power_watts\": " << corr.average_power_watts
@@ -225,7 +225,7 @@ void JsonOutputHandler::output_region_correlations(
     const auto& corr = correlations[i];
     json << "    {\n";
     json << "      \"name\": \"" << corr.region.name << "\",\n";
-    json << "      \"duration_ns\": " << corr.region.duration_ns() << ",\n";
+    json << "      \"duration_ms\": " << corr.region.duration_ms_value() << ",\n";
     json << "      \"total_energy_joules\": " << std::fixed
          << std::setprecision(6) << corr.total_energy_joules << ",\n";
     json << "      \"average_power_watts\": " << corr.average_power_watts
@@ -260,10 +260,10 @@ void CsvOutputHandler::output_power_data(
     throw std::runtime_error("Failed to open power CSV file");
   }
 
-  file << "timestamp_ns,device_id,power_watts\n";
+  file << "timestamp_ms,device_id,power_watts\n";
   for (const auto& reading : readings) {
     for (const auto& pair : reading.device_powers) {
-      file << reading.timestamp_ns() << "," << pair.first << "," << std::fixed
+      file << reading.timestamp_ms() << "," << pair.first << "," << std::fixed
            << std::setprecision(2) << pair.second << "\n";
     }
   }
@@ -276,11 +276,11 @@ void CsvOutputHandler::output_kernel_data(
     throw std::runtime_error("Failed to open kernel CSV file");
   }
 
-  file << "name,type,start_time_ns,end_time_ns,duration_ns\n";
+  file << "name,type,start_time_ms,end_time_ms,duration_ms\n";
   for (const auto& timing : timings) {
     file << "\"" << timing.name << "\"," << kernel_type_to_string(timing.type)
-         << "," << timing.start_time_ns() << "," << timing.end_time_ns() << ","
-         << timing.duration_ns() << "\n";
+         << "," << timing.start_time_ms() << "," << timing.end_time_ms() << ","
+         << timing.duration_ms_value() << "\n";
   }
 }
 
@@ -291,10 +291,10 @@ void CsvOutputHandler::output_region_data(
     throw std::runtime_error("Failed to open region CSV file");
   }
 
-  file << "name,start_time_ns,end_time_ns,duration_ns\n";
+  file << "name,start_time_ms,end_time_ms,duration_ms\n";
   for (const auto& timing : timings) {
-    file << "\"" << timing.name << "\"," << timing.start_time_ns() << ","
-         << timing.end_time_ns() << "," << timing.duration_ns() << "\n";
+    file << "\"" << timing.name << "\"," << timing.start_time_ms() << ","
+         << timing.end_time_ms() << "," << timing.duration_ms_value() << "\n";
   }
 }
 
@@ -305,11 +305,11 @@ void CsvOutputHandler::output_kernel_correlations(
     throw std::runtime_error("Failed to open kernel energy CSV file");
   }
 
-  file << "name,type,duration_ns,total_energy_joules,average_power_watts\n";
+  file << "name,type,duration_ms,total_energy_joules,average_power_watts\n";
   for (const auto& corr : correlations) {
     file << "\"" << corr.kernel.name << "\","
          << kernel_type_to_string(corr.kernel.type) << ","
-         << corr.kernel.duration_ns() << "," << std::fixed
+         << corr.kernel.duration_ms_value() << "," << std::fixed
          << std::setprecision(6) << corr.total_energy_joules << ","
          << corr.average_power_watts << "\n";
   }
@@ -322,10 +322,10 @@ void CsvOutputHandler::output_region_correlations(
     throw std::runtime_error("Failed to open region energy CSV file");
   }
 
-  file << "name,duration_ns,total_energy_joules,average_power_watts,kernels_"
+  file << "name,duration_ms,total_energy_joules,average_power_watts,kernels_"
           "count\n";
   for (const auto& corr : correlations) {
-    file << "\"" << corr.region.name << "\"," << corr.region.duration_ns()
+    file << "\"" << corr.region.name << "\"," << corr.region.duration_ms_value()
          << "," << std::fixed << std::setprecision(6)
          << corr.total_energy_joules << "," << corr.average_power_watts << ","
          << corr.kernels_in_region.size() << "\n";

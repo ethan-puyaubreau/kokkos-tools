@@ -63,8 +63,8 @@ class EnergyCorrelator {
  private:
   std::vector<EnergyReading> filter_readings_by_time_range(
       const std::vector<EnergyReading>& readings,
-      std::chrono::time_point<std::chrono::steady_clock> start_time,
-      std::chrono::time_point<std::chrono::steady_clock> end_time) const;
+      std::chrono::time_point<std::chrono::system_clock> start_time,
+      std::chrono::time_point<std::chrono::system_clock> end_time) const;
 };
 
 }  // namespace PowerProfiler

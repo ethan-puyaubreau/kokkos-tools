@@ -47,7 +47,7 @@ class TimingManager {
   std::vector<std::string> get_active_region_names() const;
 
  private:
-  std::chrono::time_point<std::chrono::steady_clock> get_current_time() const;
+  std::chrono::time_point<std::chrono::system_clock> get_current_time() const;
 
   std::unordered_map<uint64_t, KernelTiming> active_kernels_;
   std::vector<KernelTiming> completed_kernels_;

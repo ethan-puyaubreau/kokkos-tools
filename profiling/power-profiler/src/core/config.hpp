@@ -45,8 +45,8 @@ struct ProfilerConfig {
       false};  //! Only for debugging, will stop profiling if the provider fails
   bool enable_thread_safety{true};
 
-  using TimePoint = std::chrono::time_point<std::chrono::steady_clock>;
-  using Duration  = std::chrono::nanoseconds;
+  using TimePoint = std::chrono::time_point<std::chrono::system_clock>;
+  using Duration  = std::chrono::milliseconds;
 
   static std::string provider_type_to_string(ProviderType type) {
     switch (type) {

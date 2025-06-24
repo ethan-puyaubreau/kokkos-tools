@@ -117,8 +117,8 @@ EnergyCorrelator::correlate_regions_with_energy(
 
 std::vector<EnergyReading> EnergyCorrelator::filter_readings_by_time_range(
     const std::vector<EnergyReading>& readings,
-    std::chrono::time_point<std::chrono::steady_clock> start_time,
-    std::chrono::time_point<std::chrono::steady_clock> end_time) const {
+    std::chrono::time_point<std::chrono::system_clock> start_time,
+    std::chrono::time_point<std::chrono::system_clock> end_time) const {
   std::vector<EnergyReading> filtered;
 
   for (const auto& reading : readings) {

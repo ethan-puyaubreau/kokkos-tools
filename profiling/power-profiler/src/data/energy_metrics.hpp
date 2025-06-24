@@ -24,22 +24,24 @@ namespace KokkosTools {
 namespace PowerProfiler {
 
 struct EnergyReading {
-  std::chrono::time_point<std::chrono::steady_clock> timestamp;
+  std::chrono::time_point<std::chrono::system_clock> timestamp;
   std::map<uint32_t, double> device_powers;
 
   EnergyReading() = default;
-  EnergyReading(std::chrono::time_point<std::chrono::steady_clock> ts,
+  EnergyReading(std::chrono::time_point<std::chrono::system_clock> ts,
                 std::map<uint32_t, double> powers)
       : timestamp(ts), device_powers(std::move(powers)) {}
 
-  int64_t timestamp_ns() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
+  // Primary millisecond-based timestamp (preferred)
+  int64_t timestamp_ms() const {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(
                timestamp.time_since_epoch())
         .count();
   }
 
-  int64_t timestamp_ms() const {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(
+  // Legacy nanosecond timestamp (for backward compatibility if needed)
+  int64_t timestamp_ns() const {
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(
                timestamp.time_since_epoch())
         .count();
   }

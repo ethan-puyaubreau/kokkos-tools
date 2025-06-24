@@ -61,9 +61,9 @@ void TimingManager::pop_region() {
   }
 }
 
-std::chrono::time_point<std::chrono::steady_clock>
+std::chrono::time_point<std::chrono::system_clock>
 TimingManager::get_current_time() const {
-  return std::chrono::steady_clock::now();
+  return std::chrono::system_clock::now();
 }
 
 void TimingManager::clear_completed_data() {
