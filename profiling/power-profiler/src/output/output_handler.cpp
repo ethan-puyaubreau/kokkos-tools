@@ -55,8 +55,8 @@ void ConsoleOutputHandler::output_kernel_data(
     for (const auto& timing : timings) {
       std::cout << "KERNEL_TIMING," << kernel_type_to_string(timing.type)
                 << ",\"" << timing.name << "\"," << timing.start_time_ms()
-                << "," << timing.end_time_ms() << "," << timing.duration_ms_value()
-                << '\n';
+                << "," << timing.end_time_ms() << ","
+                << timing.duration_ms_value() << '\n';
     }
   }
   std::cout << "--- KERNEL_DATA_END ---\n";
@@ -202,7 +202,8 @@ void JsonOutputHandler::output_kernel_correlations(
     json << "      \"name\": \"" << corr.kernel.name << "\",\n";
     json << "      \"type\": \"" << kernel_type_to_string(corr.kernel.type)
          << "\",\n";
-    json << "      \"duration_ms\": " << corr.kernel.duration_ms_value() << ",\n";
+    json << "      \"duration_ms\": " << corr.kernel.duration_ms_value()
+         << ",\n";
     json << "      \"total_energy_joules\": " << std::fixed
          << std::setprecision(6) << corr.total_energy_joules << ",\n";
     json << "      \"average_power_watts\": " << corr.average_power_watts
@@ -225,7 +226,8 @@ void JsonOutputHandler::output_region_correlations(
     const auto& corr = correlations[i];
     json << "    {\n";
     json << "      \"name\": \"" << corr.region.name << "\",\n";
-    json << "      \"duration_ms\": " << corr.region.duration_ms_value() << ",\n";
+    json << "      \"duration_ms\": " << corr.region.duration_ms_value()
+         << ",\n";
     json << "      \"total_energy_joules\": " << std::fixed
          << std::setprecision(6) << corr.total_energy_joules << ",\n";
     json << "      \"average_power_watts\": " << corr.average_power_watts
