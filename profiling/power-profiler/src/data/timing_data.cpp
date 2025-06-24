@@ -19,6 +19,10 @@
 namespace KokkosTools {
 namespace PowerProfiler {
 
+// Initialize global ID counters
+std::atomic<uint64_t> global_kernel_id{0};
+std::atomic<uint64_t> global_region_id{0};
+
 std::string kernel_type_to_string(KernelType type) {
   switch (type) {
     case KernelType::FOR: return "For";

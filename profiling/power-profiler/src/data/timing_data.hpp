@@ -18,9 +18,15 @@
 
 #include <string>
 #include <chrono>
+#include <atomic>
+#include <cstdint>
 
 namespace KokkosTools {
 namespace PowerProfiler {
+
+// Global ID generators for kernels and regions
+extern std::atomic<uint64_t> global_kernel_id;
+extern std::atomic<uint64_t> global_region_id;
 
 enum class KernelType { FOR, SCAN, REDUCE, UNKNOWN };
 
@@ -37,6 +43,7 @@ enum class ExecutionSpace {
 };
 
 struct KernelTiming {
+  uint64_t id;                 // Unique ID for this kernel
   std::string name;
   KernelType type;
   ExecutionSpace execution_space;
@@ -45,103 +52,66 @@ struct KernelTiming {
   std::chrono::time_point<std::chrono::system_clock> start_time;
   std::chrono::time_point<std::chrono::system_clock> end_time;
 
-  KernelTiming() = default;
+  KernelTiming() : id(global_kernel_id++) {}
   KernelTiming(std::string n, KernelType t, ExecutionSpace space, 
                uint32_t dev_id, uint32_t inst_id,
                std::chrono::time_point<std::chrono::system_clock> start)
-      : name(std::move(n)), type(t), execution_space(space), 
+      : id(global_kernel_id++), name(std::move(n)), type(t), execution_space(space), 
         device_id(dev_id), instance_id(inst_id), start_time(start), end_time() {}
 
   std::chrono::nanoseconds duration() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(end_time -
-                                                                start_time);
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
   }
 
   std::chrono::milliseconds duration_ms() const {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
-                                                                 start_time);
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
   }
 
   // Primary millisecond-based methods (preferred)
   int64_t start_time_ms() const {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
-               start_time.time_since_epoch())
-        .count();
+               start_time.time_since_epoch()).count();
   }
 
   int64_t end_time_ms() const {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
-               end_time.time_since_epoch())
-        .count();
+               end_time.time_since_epoch()).count();
   }
 
   int64_t duration_ms_value() const { return duration_ms().count(); }
-
-  // Legacy nanosecond methods (for backward compatibility if needed)
-  int64_t start_time_ns() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-               start_time.time_since_epoch())
-        .count();
-  }
-
-  int64_t end_time_ns() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-               end_time.time_since_epoch())
-        .count();
-  }
-
-  int64_t duration_ns() const { return duration().count(); }
 };
 
 struct RegionTiming {
+  uint64_t id;                 // Unique ID for this region
   std::string name;
   std::chrono::time_point<std::chrono::system_clock> start_time;
   std::chrono::time_point<std::chrono::system_clock> end_time;
 
-  RegionTiming() = default;
+  RegionTiming() : id(global_region_id++) {}
   RegionTiming(std::string n,
                std::chrono::time_point<std::chrono::system_clock> start)
-      : name(std::move(n)), start_time(start), end_time() {}
+      : id(global_region_id++), name(std::move(n)), start_time(start), end_time() {}
 
   std::chrono::nanoseconds duration() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(end_time -
-                                                                start_time);
+    return std::chrono::duration_cast<std::chrono::nanoseconds>(end_time - start_time);
   }
 
   std::chrono::milliseconds duration_ms() const {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
-                                                                 start_time);
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end_time - start_time);
   }
 
   // Primary millisecond-based methods (preferred)
   int64_t start_time_ms() const {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
-               start_time.time_since_epoch())
-        .count();
+               start_time.time_since_epoch()).count();
   }
 
   int64_t end_time_ms() const {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
-               end_time.time_since_epoch())
-        .count();
+               end_time.time_since_epoch()).count();
   }
 
   int64_t duration_ms_value() const { return duration_ms().count(); }
-
-  // Legacy nanosecond methods (for backward compatibility if needed)
-  int64_t start_time_ns() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-               start_time.time_since_epoch())
-        .count();
-  }
-
-  int64_t end_time_ns() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
-               end_time.time_since_epoch())
-        .count();
-  }
-
-  int64_t duration_ns() const { return duration().count(); }
 };
 
 std::string kernel_type_to_string(KernelType type);

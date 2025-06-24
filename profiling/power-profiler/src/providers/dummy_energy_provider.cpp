@@ -46,18 +46,21 @@ EnergyReading DummyEnergyProvider::get_current_reading() const {
   }
 
   auto timestamp = std::chrono::system_clock::now();
-  std::map<uint32_t, double> device_powers;
+  std::vector<DevicePowerReading> device_readings;
+  device_readings.reserve(dummy_devices_.size());
 
   // Generate dummy power readings with some variance
   for (uint32_t device_id : dummy_devices_) {
     double base_power =
         80.0 + (device_id * 20.0);  // Device 0: ~80W, Device 1: ~100W
     double variance = power_dist_(rng_) - 100.0;  // ±50W variance
-    device_powers[device_id] =
-        base_power + (variance * 0.1);  // ±5W actual variance
+    double power = base_power + (variance * 0.1);  // ±5W actual variance
+
+    std::string device_name = "GPU_" + std::to_string(device_id);
+    device_readings.emplace_back(device_id, device_name, power);
   }
 
-  return EnergyReading(timestamp, std::move(device_powers));
+  return EnergyReading(timestamp, std::move(device_readings));
 }
 
 void DummyEnergyProvider::finalize() {

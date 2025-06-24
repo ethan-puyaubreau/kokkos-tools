@@ -18,6 +18,8 @@
 
 #include "energy_provider.hpp"
 #include <memory>
+#include <map>
+#include <string>
 
 extern "C" {
 #include <variorum.h>
@@ -58,6 +60,7 @@ class VariorumEnergyProvider : public EnergyProvider {
       const std::vector<uint32_t>& device_ids) const;
 
   std::vector<uint32_t> available_devices_;
+  std::map<uint32_t, std::string> device_names_; // Map of device IDs to their names
 };
 
 }  // namespace PowerProfiler

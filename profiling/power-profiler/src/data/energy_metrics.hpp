@@ -16,32 +16,42 @@
 
 #pragma once
 
-#include <map>
+#include <string>
 #include <chrono>
 #include <cstdint>
+#include <vector>
 
 namespace KokkosTools {
 namespace PowerProfiler {
 
+// Device power reading with both ID and name
+struct DevicePowerReading {
+  uint32_t device_id;
+  std::string device_name;
+  double power_watts;
+
+  DevicePowerReading() = default;
+  DevicePowerReading(uint32_t id, std::string name, double power)
+      : device_id(id), device_name(std::move(name)), power_watts(power) {}
+};
+
 struct EnergyReading {
   std::chrono::time_point<std::chrono::system_clock> timestamp;
-  std::map<uint32_t, double> device_powers;
-
+  std::vector<DevicePowerReading> device_readings;
+  
   EnergyReading() = default;
   EnergyReading(std::chrono::time_point<std::chrono::system_clock> ts,
-                std::map<uint32_t, double> powers)
-      : timestamp(ts), device_powers(std::move(powers)) {}
+                std::vector<DevicePowerReading> readings)
+      : timestamp(ts), device_readings(std::move(readings)) {}
+  
+  // Get power for a specific device ID
+  double get_power_for_device(uint32_t device_id) const;
+  
+  // Get total power across all devices
+  double get_total_power() const;
 
-  // Primary millisecond-based timestamp (preferred)
   int64_t timestamp_ms() const {
     return std::chrono::duration_cast<std::chrono::milliseconds>(
-               timestamp.time_since_epoch())
-        .count();
-  }
-
-  // Legacy nanosecond timestamp (for backward compatibility if needed)
-  int64_t timestamp_ns() const {
-    return std::chrono::duration_cast<std::chrono::nanoseconds>(
                timestamp.time_since_epoch())
         .count();
   }

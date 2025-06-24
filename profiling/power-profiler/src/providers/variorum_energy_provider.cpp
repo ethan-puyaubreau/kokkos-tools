@@ -25,6 +25,39 @@ namespace PowerProfiler {
 
 void VariorumEnergyProvider::initialize() {
   available_devices_ = get_available_devices();
+  
+  // Initialize device name map
+  unique_json_ptr root = get_variorum_json_data();
+  if (root) {
+    json_t* host_obj = json_object_iter_value(json_object_iter(root.get()));
+    if (host_obj) {
+      json_t* socket_0 = json_object_get(host_obj, "socket_0");
+      if (socket_0 && json_is_object(socket_0)) {
+        json_t* power_gpu_watts = json_object_get(socket_0, "power_gpu_watts");
+        if (power_gpu_watts && json_is_object(power_gpu_watts)) {
+          const char* key;
+          json_t* value;
+          json_object_foreach(power_gpu_watts, key, value) {
+            std::string s_key(key);
+            if (s_key.length() > 4 && s_key.substr(0, 4) == "GPU_") {
+              try {
+                uint32_t device_id = std::stoul(s_key.substr(4));
+                device_names_[device_id] = s_key;
+              } catch (const std::invalid_argument& e) {
+                std::cerr << "PowerProfiler: Could not parse GPU ID from key: " << s_key
+                          << " (" << e.what() << ")"
+                          << "\n";
+              } catch (const std::out_of_range& e) {
+                std::cerr << "PowerProfiler: GPU ID out of range from key: " << s_key
+                          << " (" << e.what() << ")"
+                          << "\n";
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
 
 std::vector<uint32_t> VariorumEnergyProvider::get_available_devices() const {
@@ -82,11 +115,28 @@ std::vector<uint32_t> VariorumEnergyProvider::get_available_devices() const {
 
 EnergyReading VariorumEnergyProvider::get_current_reading() const {
   auto current_time = std::chrono::system_clock::now();
-
-  std::map<uint32_t, double> power_readings =
+  
+  // Get power readings for all available devices
+  std::map<uint32_t, double> power_map = 
       get_current_power_for_devices(available_devices_);
+      
+  // Convert to our new format
+  std::vector<DevicePowerReading> device_readings;
+  device_readings.reserve(power_map.size());
+  
+  for (const auto& [device_id, power] : power_map) {
+    std::string device_name;
+    // Look up device name
+    auto it = device_names_.find(device_id);
+    if (it != device_names_.end()) {
+      device_name = it->second;
+    } else {
+      device_name = "GPU_" + std::to_string(device_id);
+    }
+    device_readings.emplace_back(device_id, device_name, power);
+  }
 
-  return EnergyReading(current_time, std::move(power_readings));
+  return EnergyReading(current_time, std::move(device_readings));
 }
 
 void VariorumEnergyProvider::finalize() {}
@@ -102,30 +152,28 @@ VariorumEnergyProvider::get_variorum_json_data() const {
     return nullptr;
   }
 
-  unique_c_string_ptr json_string_c(json_string_c_raw);
-
-  if (!json_string_c) {
-    std::cerr << "PowerProfiler: variorum_get_power_json() returned success "
-                 "but a null pointer."
+  if (!json_string_c_raw) {
+    std::cerr << "PowerProfiler: variorum_get_power_json() returned null."
               << "\n";
     return nullptr;
   }
 
   json_error_t error;
-  json_t* root_ptr = json_loads(json_string_c.get(), 0, &error);
+  json_t* root = json_loads(json_string_c_raw, 0, &error);
+  free(json_string_c_raw);
 
-  if (!root_ptr) {
-    std::cerr << "PowerProfiler: Failed to parse JSON: " << error.text << "\n";
+  if (!root) {
+    std::cerr << "PowerProfiler: Error parsing JSON: " << error.text
+              << " at line " << error.line << "\n";
     return nullptr;
   }
 
-  return unique_json_ptr(root_ptr);
+  return unique_json_ptr(root);
 }
 
-std::map<uint32_t, double>
-VariorumEnergyProvider::get_current_power_for_devices(
-    const std::vector<uint32_t>& device_ids) const {
-  std::map<uint32_t, double> power_readings;
+std::map<uint32_t, double> VariorumEnergyProvider::get_current_power_for_devices(
+    const std::vector<uint32_t>& devices) const {
+  std::map<uint32_t, double> result;
   unique_json_ptr root = get_variorum_json_data();
 
   if (!root) {
@@ -134,29 +182,41 @@ VariorumEnergyProvider::get_current_power_for_devices(
 
   json_t* host_obj = json_object_iter_value(json_object_iter(root.get()));
   if (!host_obj) {
+    std::cerr << "PowerProfiler: No hostname object found in JSON."
+              << "\n";
     return {};
   }
 
   json_t* socket_0 = json_object_get(host_obj, "socket_0");
   if (!socket_0 || !json_is_object(socket_0)) {
+    std::cerr << "PowerProfiler: 'socket_0' object not found or invalid."
+              << "\n";
     return {};
   }
 
   json_t* power_gpu_watts = json_object_get(socket_0, "power_gpu_watts");
   if (!power_gpu_watts || !json_is_object(power_gpu_watts)) {
+    std::cerr << "PowerProfiler: 'power_gpu_watts' object not found or invalid."
+              << "\n";
     return {};
   }
 
-  for (uint32_t device_id : device_ids) {
-    std::string gpu_key = "GPU_" + std::to_string(device_id);
-    json_t* power_value = json_object_get(power_gpu_watts, gpu_key.c_str());
+  for (uint32_t device_id : devices) {
+    std::string key = "GPU_" + std::to_string(device_id);
+    json_t* value   = json_object_get(power_gpu_watts, key.c_str());
 
-    if (json_is_number(power_value)) {
-      power_readings[device_id] = json_number_value(power_value);
+    if (!value || !json_is_number(value)) {
+      std::cerr << "PowerProfiler: Power data for " << key
+                << " not found or invalid."
+                << "\n";
+      continue;
     }
+
+    double power = json_number_value(value);
+    result[device_id] = power;
   }
 
-  return power_readings;
+  return result;
 }
 
 }  // namespace PowerProfiler

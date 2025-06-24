@@ -16,7 +16,6 @@
 
 #include "profiler_core.hpp"
 #include "../providers/energy_provider.hpp"
-#include "../data/execution_space_stats.hpp"
 #include <iostream>
 
 namespace KokkosTools {
@@ -127,14 +126,14 @@ void PowerProfilerCore::setup_output_handler() {
   try {
     if (config_.output_type == ProfilerConfig::OutputType::CONSOLE) {
       output_handler_ = OutputHandlerFactory::create(
-          OutputHandlerFactory::HandlerType::CONSOLE);
+          OutputHandlerFactory::Format::CONSOLE);
     } else if (config_.output_type == ProfilerConfig::OutputType::JSON_FILE) {
       output_handler_ = OutputHandlerFactory::create(
-          OutputHandlerFactory::HandlerType::JSON_FILE,
-          config_.output_file_path + ".json");
+          OutputHandlerFactory::Format::JSON,
+          config_.output_file_path);
     } else if (config_.output_type == ProfilerConfig::OutputType::CSV_FILE) {
       output_handler_ = OutputHandlerFactory::create(
-          OutputHandlerFactory::HandlerType::CSV_FILE,
+          OutputHandlerFactory::Format::CSV,
           config_.output_file_path);
     }
   } catch (const std::exception& e) {
@@ -142,7 +141,7 @@ void PowerProfilerCore::setup_output_handler() {
               << ". Falling back to console output."
               << "\n";
     output_handler_ = OutputHandlerFactory::create(
-        OutputHandlerFactory::HandlerType::CONSOLE);
+        OutputHandlerFactory::Format::CONSOLE);
   }
 }
 
@@ -150,46 +149,40 @@ void PowerProfilerCore::perform_analysis_and_output() {
   if (!output_handler_) return;
 
   try {
+    // Get all the raw timing data
+    auto kernel_timings = timing_manager_ ? timing_manager_->get_kernel_timings() 
+                                          : std::vector<KernelTiming>();
+    auto region_timings = timing_manager_ ? timing_manager_->get_region_timings() 
+                                          : std::vector<RegionTiming>();
+
+    // Collect and output raw power data
+    std::vector<EnergyReading> energy_readings;
     if (power_monitor_) {
-      auto energy_readings = power_monitor_->get_collected_data();
+      energy_readings = power_monitor_->get_collected_data();
       output_handler_->output_power_data(energy_readings);
-
-      if (timing_manager_ && correlator_ && !energy_readings.empty()) {
-        auto kernel_timings = timing_manager_->get_kernel_timings();
-        auto region_timings = timing_manager_->get_region_timings();
-
-        if (!kernel_timings.empty()) {
-          auto kernel_correlations = correlator_->correlate_kernels_with_energy(
-              kernel_timings, energy_readings);
-          output_handler_->output_kernel_correlations(kernel_correlations);
-          
-          // Generate and output execution space statistics with energy data
-          auto timing_stats = ExecutionSpaceAnalyzer::analyze_kernel_timings(kernel_timings);
-          auto energy_stats = ExecutionSpaceAnalyzer::analyze_kernel_energy(kernel_correlations);
-          auto merged_stats = ExecutionSpaceAnalyzer::merge_timing_and_energy_stats(timing_stats, energy_stats);
-          output_handler_->output_execution_space_stats(merged_stats);
-        }
-
-        if (!region_timings.empty()) {
-          auto region_correlations = correlator_->correlate_regions_with_energy(
-              region_timings, energy_readings, kernel_timings);
-          output_handler_->output_region_correlations(region_correlations);
-        }
-      }
     }
-
-    if (timing_manager_) {
-      auto kernel_timings = timing_manager_->get_kernel_timings();
-      output_handler_->output_kernel_data(kernel_timings);
-      output_handler_->output_region_data(
-          timing_manager_->get_region_timings());
+    
+    // Calculate energy correlations if we have energy data
+    std::vector<KernelEnergyCorrelation> kernel_correlations;
+    std::vector<RegionEnergyCorrelation> region_correlations;
+    
+    if (!energy_readings.empty() && correlator_) {
+      if (!kernel_timings.empty()) {
+        kernel_correlations = correlator_->correlate_kernels_with_energy(
+            kernel_timings, energy_readings);
+      }
       
-      // If no energy data is available, still generate timing-only statistics
-      if (!kernel_timings.empty() && (!power_monitor_ || power_monitor_->get_collected_data().empty())) {
-        auto timing_stats = ExecutionSpaceAnalyzer::analyze_kernel_timings(kernel_timings);
-        output_handler_->output_execution_space_stats(timing_stats);
+      if (!region_timings.empty()) {
+        region_correlations = correlator_->correlate_regions_with_energy(
+            region_timings, energy_readings, kernel_timings);
       }
     }
+    
+    // Output structured data for kernels and regions
+    output_handler_->output_kernel_data(kernel_timings, 
+                                      !kernel_correlations.empty() ? &kernel_correlations : nullptr);
+    output_handler_->output_region_data(region_timings, 
+                                      !region_correlations.empty() ? &region_correlations : nullptr);
   } catch (const std::exception& e) {
     std::cerr << "PowerProfiler: Error during output: " << e.what() << "\n";
   }

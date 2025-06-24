@@ -19,7 +19,6 @@
 #include "../data/energy_metrics.hpp"
 #include "../data/timing_data.hpp"
 #include "../data/correlation.hpp"
-#include "../data/execution_space_stats.hpp"
 #include <vector>
 #include <string>
 #include <memory>
@@ -27,54 +26,50 @@
 namespace KokkosTools {
 namespace PowerProfiler {
 
+// Forward declaration
+class OutputFormat;
+
 class OutputHandler {
  public:
   virtual ~OutputHandler() = default;
 
+  // Raw data output methods
   virtual void output_power_data(
-      const std::vector<EnergyReading>& readings)                           = 0;
-  virtual void output_kernel_data(const std::vector<KernelTiming>& timings) = 0;
-  virtual void output_region_data(const std::vector<RegionTiming>& timings) = 0;
-
-  virtual void output_kernel_correlations(
-      const std::vector<KernelEnergyCorrelation>& correlations) = 0;
-  virtual void output_region_correlations(
-      const std::vector<RegionEnergyCorrelation>& correlations) = 0;
-  
-  virtual void output_execution_space_stats(
-      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) = 0;
+      const std::vector<EnergyReading>& readings) = 0;
+  virtual void output_kernel_data(
+      const std::vector<KernelTiming>& timings, 
+      const std::vector<KernelEnergyCorrelation>* correlations = nullptr) = 0;
+  virtual void output_region_data(
+      const std::vector<RegionTiming>& timings,
+      const std::vector<RegionEnergyCorrelation>* correlations = nullptr) = 0;
 };
 
 class ConsoleOutputHandler : public OutputHandler {
  public:
   void output_power_data(const std::vector<EnergyReading>& readings) override;
-  void output_kernel_data(const std::vector<KernelTiming>& timings) override;
-  void output_region_data(const std::vector<RegionTiming>& timings) override;
-  void output_kernel_correlations(
-      const std::vector<KernelEnergyCorrelation>& correlations) override;
-  void output_region_correlations(
-      const std::vector<RegionEnergyCorrelation>& correlations) override;
-  void output_execution_space_stats(
-      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) override;
+  void output_kernel_data(
+      const std::vector<KernelTiming>& timings, 
+      const std::vector<KernelEnergyCorrelation>* correlations = nullptr) override;
+  void output_region_data(
+      const std::vector<RegionTiming>& timings,
+      const std::vector<RegionEnergyCorrelation>* correlations = nullptr) override;
 };
 
 class JsonOutputHandler : public OutputHandler {
  public:
-  explicit JsonOutputHandler(const std::string& file_path);
+  explicit JsonOutputHandler(const std::string& file_path_prefix);
 
   void output_power_data(const std::vector<EnergyReading>& readings) override;
-  void output_kernel_data(const std::vector<KernelTiming>& timings) override;
-  void output_region_data(const std::vector<RegionTiming>& timings) override;
-  void output_kernel_correlations(
-      const std::vector<KernelEnergyCorrelation>& correlations) override;
-  void output_region_correlations(
-      const std::vector<RegionEnergyCorrelation>& correlations) override;
-  void output_execution_space_stats(
-      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) override;
+  void output_kernel_data(
+      const std::vector<KernelTiming>& timings, 
+      const std::vector<KernelEnergyCorrelation>* correlations = nullptr) override;
+  void output_region_data(
+      const std::vector<RegionTiming>& timings,
+      const std::vector<RegionEnergyCorrelation>* correlations = nullptr) override;
 
  private:
-  void write_to_file(const std::string& json_content);
-  std::string file_path_;
+  void write_to_file(const std::string& json_content, const std::string& suffix);
+  std::string file_path_prefix_;
 };
 
 class CsvOutputHandler : public OutputHandler {
@@ -82,14 +77,12 @@ class CsvOutputHandler : public OutputHandler {
   explicit CsvOutputHandler(const std::string& file_path_prefix);
 
   void output_power_data(const std::vector<EnergyReading>& readings) override;
-  void output_kernel_data(const std::vector<KernelTiming>& timings) override;
-  void output_region_data(const std::vector<RegionTiming>& timings) override;
-  void output_kernel_correlations(
-      const std::vector<KernelEnergyCorrelation>& correlations) override;
-  void output_region_correlations(
-      const std::vector<RegionEnergyCorrelation>& correlations) override;
-  void output_execution_space_stats(
-      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) override;
+  void output_kernel_data(
+      const std::vector<KernelTiming>& timings, 
+      const std::vector<KernelEnergyCorrelation>* correlations = nullptr) override;
+  void output_region_data(
+      const std::vector<RegionTiming>& timings,
+      const std::vector<RegionEnergyCorrelation>* correlations = nullptr) override;
 
  private:
   std::string file_path_prefix_;
@@ -98,10 +91,10 @@ class CsvOutputHandler : public OutputHandler {
 // Factory for output handlers
 class OutputHandlerFactory {
  public:
-  enum class HandlerType { CONSOLE, JSON_FILE, CSV_FILE };
-
-  static std::unique_ptr<OutputHandler> create(
-      HandlerType type, const std::string& file_path = "");
+  enum class Format { CONSOLE, JSON, CSV };
+  
+  static std::unique_ptr<OutputHandler> create(Format format, 
+                                               const std::string& file_path_prefix = "");
 };
 
 }  // namespace PowerProfiler

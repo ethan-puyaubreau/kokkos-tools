@@ -22,6 +22,7 @@ SOURCES = src/power-profiler.cpp \
           src/providers/variorum_energy_provider.cpp \
           src/providers/dummy_energy_provider.cpp \
           src/data/timing_data.cpp \
+          src/data/energy_metrics.cpp \
           src/data/correlation.cpp \
           src/data/execution_space_stats.cpp \
           src/output/output_handler.cpp \
