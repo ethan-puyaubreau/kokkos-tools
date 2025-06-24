@@ -68,7 +68,7 @@ void kokkosp_finalize_library() {
 void kokkosp_begin_parallel_for(const char* name, const uint32_t devID,
                                 uint64_t* kID) {
   if (power_profiling_core.is_initialized()) {
-    power_profiling_core.begin_kernel(*kID, std::string(name), KernelType::FOR);
+    power_profiling_core.begin_kernel(*kID, std::string(name), KernelType::FOR, devID);
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, cannot begin parallel for.\n";
@@ -88,7 +88,7 @@ void kokkosp_begin_parallel_scan(const char* name, const uint32_t devID,
                                  uint64_t* kID) {
   if (power_profiling_core.is_initialized() && kID) {
     power_profiling_core.begin_kernel(*kID, std::string(name),
-                                      KernelType::SCAN);
+                                      KernelType::SCAN, devID);
   } else {
     std::cerr << "PowerProfiler: Core not initialized or kID is null, "
                  "cannot begin parallel scan.\n";
@@ -108,7 +108,7 @@ void kokkosp_begin_parallel_reduce(const char* name, const uint32_t devID,
                                    uint64_t* kID) {
   if (power_profiling_core.is_initialized() && kID) {
     power_profiling_core.begin_kernel(*kID, std::string(name),
-                                      KernelType::REDUCE);
+                                      KernelType::REDUCE, devID);
   } else {
     std::cerr << "PowerProfiler: Core not initialized or kID is null, "
                  "cannot begin parallel reduce.\n";

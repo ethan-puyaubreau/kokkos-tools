@@ -29,5 +29,34 @@ std::string kernel_type_to_string(KernelType type) {
   return "Unknown";
 }
 
+std::string execution_space_to_string(ExecutionSpace space) {
+  switch (space) {
+    case ExecutionSpace::HOST_SERIAL: return "Serial";
+    case ExecutionSpace::HOST_OPENMP: return "OpenMP";
+    case ExecutionSpace::HOST_THREADS: return "Threads";
+    case ExecutionSpace::DEVICE_CUDA: return "Cuda";
+    case ExecutionSpace::DEVICE_HIP: return "HIP";
+    case ExecutionSpace::DEVICE_SYCL: return "SYCL";
+    case ExecutionSpace::DEVICE_OPENMPTARGET: return "OpenMPTarget";
+    case ExecutionSpace::DEVICE_OPENACC: return "OpenACC";
+    case ExecutionSpace::UNKNOWN: return "Unknown";
+  }
+  return "Unknown";
+}
+
+bool is_host_execution_space(ExecutionSpace space) {
+  return space == ExecutionSpace::HOST_SERIAL ||
+         space == ExecutionSpace::HOST_OPENMP ||
+         space == ExecutionSpace::HOST_THREADS;
+}
+
+bool is_device_execution_space(ExecutionSpace space) {
+  return space == ExecutionSpace::DEVICE_CUDA ||
+         space == ExecutionSpace::DEVICE_HIP ||
+         space == ExecutionSpace::DEVICE_SYCL ||
+         space == ExecutionSpace::DEVICE_OPENMPTARGET ||
+         space == ExecutionSpace::DEVICE_OPENACC;
+}
+
 }  // namespace PowerProfiler
 }  // namespace KokkosTools

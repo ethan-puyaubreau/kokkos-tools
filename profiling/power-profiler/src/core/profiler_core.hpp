@@ -35,7 +35,7 @@ class PowerProfilerCore {
   void finalize();
 
   void begin_kernel(uint64_t kernel_id, const std::string& name,
-                    KernelType type);
+                    KernelType type, uint32_t device_id);
   void end_kernel(uint64_t kernel_id);
 
   void push_region(const std::string& name);

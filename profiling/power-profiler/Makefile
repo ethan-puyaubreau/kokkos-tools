@@ -23,13 +23,16 @@ SOURCES = src/power-profiler.cpp \
           src/providers/dummy_energy_provider.cpp \
           src/data/timing_data.cpp \
           src/data/correlation.cpp \
-          src/output/output_handler.cpp
+          src/data/execution_space_stats.cpp \
+          src/output/output_handler.cpp \
+          src/utils/device_utils.cpp
 
 HEADERS = $(wildcard src/*.hpp) \
           $(wildcard src/core/*.hpp) \
           $(wildcard src/providers/*.hpp) \
           $(wildcard src/data/*.hpp) \
-          $(wildcard src/output/*.hpp)
+          $(wildcard src/output/*.hpp) \
+          $(wildcard src/utils/*.hpp)
 
 build/power-profiler.so: $(SOURCES) $(HEADERS) | build
 	$(CXX) $(SHARED_CXXFLAGS) $(CXXFLAGS) $(VAR_LIB) $(VAR_INC) -o $@ $(SOURCES) $(LINK_FLAG)

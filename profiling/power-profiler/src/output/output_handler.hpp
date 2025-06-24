@@ -19,6 +19,7 @@
 #include "../data/energy_metrics.hpp"
 #include "../data/timing_data.hpp"
 #include "../data/correlation.hpp"
+#include "../data/execution_space_stats.hpp"
 #include <vector>
 #include <string>
 #include <memory>
@@ -39,6 +40,9 @@ class OutputHandler {
       const std::vector<KernelEnergyCorrelation>& correlations) = 0;
   virtual void output_region_correlations(
       const std::vector<RegionEnergyCorrelation>& correlations) = 0;
+  
+  virtual void output_execution_space_stats(
+      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) = 0;
 };
 
 class ConsoleOutputHandler : public OutputHandler {
@@ -50,6 +54,8 @@ class ConsoleOutputHandler : public OutputHandler {
       const std::vector<KernelEnergyCorrelation>& correlations) override;
   void output_region_correlations(
       const std::vector<RegionEnergyCorrelation>& correlations) override;
+  void output_execution_space_stats(
+      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) override;
 };
 
 class JsonOutputHandler : public OutputHandler {
@@ -63,6 +69,8 @@ class JsonOutputHandler : public OutputHandler {
       const std::vector<KernelEnergyCorrelation>& correlations) override;
   void output_region_correlations(
       const std::vector<RegionEnergyCorrelation>& correlations) override;
+  void output_execution_space_stats(
+      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) override;
 
  private:
   void write_to_file(const std::string& json_content);
@@ -80,6 +88,8 @@ class CsvOutputHandler : public OutputHandler {
       const std::vector<KernelEnergyCorrelation>& correlations) override;
   void output_region_correlations(
       const std::vector<RegionEnergyCorrelation>& correlations) override;
+  void output_execution_space_stats(
+      const std::map<ExecutionSpace, ExecutionSpaceStats>& stats) override;
 
  private:
   std::string file_path_prefix_;

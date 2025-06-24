@@ -16,6 +16,7 @@
 
 #include "profiler_core.hpp"
 #include "../providers/energy_provider.hpp"
+#include "../data/execution_space_stats.hpp"
 #include <iostream>
 
 namespace KokkosTools {
@@ -63,9 +64,9 @@ void PowerProfilerCore::finalize() {
 }
 
 void PowerProfilerCore::begin_kernel(uint64_t kernel_id,
-                                     const std::string& name, KernelType type) {
+                                     const std::string& name, KernelType type, uint32_t device_id) {
   if (timing_manager_) {
-    timing_manager_->begin_kernel(kernel_id, name, type);
+    timing_manager_->begin_kernel(kernel_id, name, type, device_id);
   }
 }
 
@@ -161,6 +162,12 @@ void PowerProfilerCore::perform_analysis_and_output() {
           auto kernel_correlations = correlator_->correlate_kernels_with_energy(
               kernel_timings, energy_readings);
           output_handler_->output_kernel_correlations(kernel_correlations);
+          
+          // Generate and output execution space statistics with energy data
+          auto timing_stats = ExecutionSpaceAnalyzer::analyze_kernel_timings(kernel_timings);
+          auto energy_stats = ExecutionSpaceAnalyzer::analyze_kernel_energy(kernel_correlations);
+          auto merged_stats = ExecutionSpaceAnalyzer::merge_timing_and_energy_stats(timing_stats, energy_stats);
+          output_handler_->output_execution_space_stats(merged_stats);
         }
 
         if (!region_timings.empty()) {
@@ -172,10 +179,16 @@ void PowerProfilerCore::perform_analysis_and_output() {
     }
 
     if (timing_manager_) {
-      output_handler_->output_kernel_data(
-          timing_manager_->get_kernel_timings());
+      auto kernel_timings = timing_manager_->get_kernel_timings();
+      output_handler_->output_kernel_data(kernel_timings);
       output_handler_->output_region_data(
           timing_manager_->get_region_timings());
+      
+      // If no energy data is available, still generate timing-only statistics
+      if (!kernel_timings.empty() && (!power_monitor_ || power_monitor_->get_collected_data().empty())) {
+        auto timing_stats = ExecutionSpaceAnalyzer::analyze_kernel_timings(kernel_timings);
+        output_handler_->output_execution_space_stats(timing_stats);
+      }
     }
   } catch (const std::exception& e) {
     std::cerr << "PowerProfiler: Error during output: " << e.what() << "\n";

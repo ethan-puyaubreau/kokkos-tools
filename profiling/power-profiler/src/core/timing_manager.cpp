@@ -15,13 +15,14 @@
 //@HEADER
 
 #include "timing_manager.hpp"
+#include "../utils/device_utils.hpp"
 #include <iostream>
 
 namespace KokkosTools {
 namespace PowerProfiler {
 
 void TimingManager::begin_kernel(uint64_t kernel_id, const std::string& name,
-                                 KernelType type) {
+                                 KernelType type, uint32_t device_id) {
   auto current_time = get_current_time();
 
   if (active_kernels_.find(kernel_id) != active_kernels_.end()) {
@@ -30,7 +31,13 @@ void TimingManager::begin_kernel(uint64_t kernel_id, const std::string& name,
               << "\n";
   }
 
-  active_kernels_[kernel_id] = KernelTiming(name, type, current_time);
+  // Get execution space information from device ID
+  auto space_info = get_execution_space_info(device_id);
+  auto execution_space = device_type_to_execution_space(space_info.type);
+
+  active_kernels_[kernel_id] = KernelTiming(name, type, execution_space, 
+                                            space_info.device_id, space_info.instance_id,
+                                            current_time);
 }
 
 void TimingManager::end_kernel(uint64_t kernel_id) {
