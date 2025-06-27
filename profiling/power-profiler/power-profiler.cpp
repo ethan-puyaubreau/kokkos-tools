@@ -14,29 +14,22 @@
 //
 //@HEADER
 
-//**
-// Energy profiling tool for Kokkos - Modular system
-//  */
+/**
+ * Kokkos Power Profiler - Specialized for Variorum
+ * Simplified version focused on Variorum energy monitoring with integrated timing
+ */
 
 #include <cstring>
 #include <iostream>
 
-#include "core/config.hpp"
 #include "kp_core.hpp"
-#include "core/profiler_core.hpp"
+#include "variorum_power_profiler.hpp"
 
 namespace KokkosTools {
 namespace PowerProfiler {
 
 // --- Core Initialization ---
-
-ProfilerConfig power_profiler_config{
-    .monitor_interval       = std::chrono::microseconds(20000),
-    .energy_provider_type   = ProfilerConfig::ProviderType::VARIORUM,
-    .output_type            = ProfilerConfig::OutputType::CONSOLE,
-    .fail_on_provider_error = true};
-
-PowerProfilerCore power_profiling_core(power_profiler_config);
+VariorumPowerProfiler power_profiler;
 
 // --- Library Initialization/Finalization ---
 
@@ -48,12 +41,12 @@ void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
       "KokkosP: Power Profiler (sequence is %d, version: %lu, devices: %u)\n",
       loadSeq, interfaceVer, devInfoCount);
   printf("-----------------------------------------------------------\n");
-  power_profiling_core.initialize();
+  power_profiler.initialize();
 }
 
 void kokkosp_finalize_library() {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.finalize();
+  if (power_profiler.is_initialized()) {
+    power_profiler.finalize();
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, skipping finalization.\n";
@@ -67,8 +60,8 @@ void kokkosp_finalize_library() {
 
 void kokkosp_begin_parallel_for(const char* name, const uint32_t devID,
                                 uint64_t* kID) {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.begin_kernel(*kID, std::string(name), KernelType::FOR);
+  if (power_profiler.is_initialized()) {
+    power_profiler.begin_kernel(*kID, std::string(name), KernelType::FOR);
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, cannot begin parallel for.\n";
@@ -76,8 +69,8 @@ void kokkosp_begin_parallel_for(const char* name, const uint32_t devID,
 }
 
 void kokkosp_end_parallel_for(const uint64_t kID) {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.end_kernel(kID);
+  if (power_profiler.is_initialized()) {
+    power_profiler.end_kernel(kID);
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, cannot end parallel for.\n";
@@ -86,9 +79,8 @@ void kokkosp_end_parallel_for(const uint64_t kID) {
 
 void kokkosp_begin_parallel_scan(const char* name, const uint32_t devID,
                                  uint64_t* kID) {
-  if (power_profiling_core.is_initialized() && kID) {
-    power_profiling_core.begin_kernel(*kID, std::string(name),
-                                      KernelType::SCAN);
+  if (power_profiler.is_initialized() && kID) {
+    power_profiler.begin_kernel(*kID, std::string(name), KernelType::SCAN);
   } else {
     std::cerr << "PowerProfiler: Core not initialized or kID is null, "
                  "cannot begin parallel scan.\n";
@@ -96,8 +88,8 @@ void kokkosp_begin_parallel_scan(const char* name, const uint32_t devID,
 }
 
 void kokkosp_end_parallel_scan(const uint64_t kID) {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.end_kernel(kID);
+  if (power_profiler.is_initialized()) {
+    power_profiler.end_kernel(kID);
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, cannot end parallel scan.\n";
@@ -106,9 +98,8 @@ void kokkosp_end_parallel_scan(const uint64_t kID) {
 
 void kokkosp_begin_parallel_reduce(const char* name, const uint32_t devID,
                                    uint64_t* kID) {
-  if (power_profiling_core.is_initialized() && kID) {
-    power_profiling_core.begin_kernel(*kID, std::string(name),
-                                      KernelType::REDUCE);
+  if (power_profiler.is_initialized() && kID) {
+    power_profiler.begin_kernel(*kID, std::string(name), KernelType::REDUCE);
   } else {
     std::cerr << "PowerProfiler: Core not initialized or kID is null, "
                  "cannot begin parallel reduce.\n";
@@ -116,8 +107,8 @@ void kokkosp_begin_parallel_reduce(const char* name, const uint32_t devID,
 }
 
 void kokkosp_end_parallel_reduce(const uint64_t kID) {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.end_kernel(kID);
+  if (power_profiler.is_initialized()) {
+    power_profiler.end_kernel(kID);
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, cannot end parallel reduce.\n";
@@ -125,8 +116,8 @@ void kokkosp_end_parallel_reduce(const uint64_t kID) {
 }
 
 void kokkosp_push_profile_region(char const* regionName) {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.push_region(std::string(regionName));
+  if (power_profiler.is_initialized()) {
+    power_profiler.push_region(std::string(regionName));
     printf("KokkosP: Entering profiling region: %s\n", regionName);
   } else {
     std::cerr
@@ -135,8 +126,8 @@ void kokkosp_push_profile_region(char const* regionName) {
 }
 
 void kokkosp_pop_profile_region() {
-  if (power_profiling_core.is_initialized()) {
-    power_profiling_core.pop_region();
+  if (power_profiler.is_initialized()) {
+    power_profiler.pop_region();
   } else {
     std::cerr
         << "PowerProfiler: Core not initialized, cannot pop profile region.\n";
