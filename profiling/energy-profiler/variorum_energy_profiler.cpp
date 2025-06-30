@@ -26,7 +26,6 @@ namespace KokkosTools {
 namespace PowerProfiler {
 
 VariorumPowerProfiler::VariorumPowerProfiler() {
-  // Load configuration from environment
   if (const char* interval = std::getenv("KOKKOS_TOOLS_POWER_MONITOR_INTERVAL")) {
     try {
       auto interval_us = std::stoul(interval);

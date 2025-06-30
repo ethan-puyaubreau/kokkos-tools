@@ -24,7 +24,7 @@
 #include <thread>
 #include <atomic>
 #include <fstream>
-#include <map> // Added for std::map<uint32_t, double>
+#include <map>
 
 extern "C" {
 #include <variorum.h>
@@ -38,7 +38,6 @@ enum class KernelType { FOR, SCAN, REDUCE };
 
 struct EnergyReading {
   std::chrono::time_point<std::chrono::steady_clock> timestamp;
-  // Changed to store power readings directly, indexed by device_id
   std::map<uint32_t, double> gpu_power_watts; 
 };
 
@@ -58,9 +57,6 @@ struct RegionTiming {
   std::chrono::nanoseconds duration;
 };
 
-/**
- * Simplified Variorum-specific power profiler with integrated timing
- */
 class VariorumPowerProfiler {
 public:
   VariorumPowerProfiler();
@@ -78,7 +74,6 @@ public:
   bool is_initialized() const { return initialized_; }
 
 private:
-  // Variorum energy monitoring
   struct JsonDeleter {
     void operator()(json_t* json) const {
       if (json) json_decref(json);
@@ -98,42 +93,34 @@ private:
   EnergyReading get_current_energy_reading() const;
   std::vector<uint32_t> get_available_devices() const;
 
-  // Background monitoring
   void monitoring_thread_function();
   void start_monitoring();
   void stop_monitoring();
 
-  // Output generation
   void generate_outputs();
   void output_to_console();
   void output_to_json();
   void output_to_csv();
 
-  // Timing utilities
   std::chrono::time_point<std::chrono::steady_clock> get_current_time() const;
   std::chrono::nanoseconds get_time_relative_to_first_measurement(
       const std::chrono::time_point<std::chrono::steady_clock>& timepoint) const;
 
-  // Configuration
   std::chrono::microseconds monitor_interval_{20000}; // 20ms
   std::string output_file_path_{"power_profile_output"};
   
-  // State
   bool initialized_{false};
   std::vector<uint32_t> available_devices_;
   std::chrono::time_point<std::chrono::steady_clock> first_measurement_time_;
   bool first_measurement_recorded_{false};
 
-  // Monitoring thread
   std::atomic<bool> monitoring_active_{false};
   std::unique_ptr<std::thread> monitoring_thread_;
 
-  // Data storage
   std::vector<EnergyReading> energy_readings_;
   std::vector<KernelTiming> completed_kernels_;
   std::vector<RegionTiming> completed_regions_;
 
-  // Active tracking
   std::unordered_map<uint64_t, KernelTiming> active_kernels_;
   std::vector<RegionTiming> active_regions_;
 };
