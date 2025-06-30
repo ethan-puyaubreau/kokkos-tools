@@ -23,7 +23,6 @@
 #include <memory>
 #include <thread>
 #include <atomic>
-#include <fstream>
 #include <map>
 
 extern "C" {

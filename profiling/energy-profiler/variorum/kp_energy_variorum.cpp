@@ -23,7 +23,7 @@
 #include <iostream>
 
 #include "kp_core.hpp"
-#include "variorum_power_profiler.hpp"
+#include "variorum_energy_profiler.hpp"
 
 namespace KokkosTools {
 namespace PowerProfiler {

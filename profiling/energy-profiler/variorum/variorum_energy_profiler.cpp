@@ -14,7 +14,7 @@
 //
 //@HEADER
 
-#include "variorum_power_profiler.hpp"
+#include "variorum_energy_profiler.hpp"
 #include <iostream>
 #include <fstream>
 #include <set>
