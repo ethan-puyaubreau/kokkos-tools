@@ -72,17 +72,20 @@ std::chrono::high_resolution_clock::time_point g_last_measurement_time;
 void nvml_power_monitoring_thread_func(std::stop_token stop_token,
                                        std::chrono::milliseconds interval) {
   auto start_time           = std::chrono::high_resolution_clock::now();
-  auto next_check_time      = start_time + interval;
-  g_last_measurement_time   = start_time;
   int64_t interval_count    = 0;
   int64_t delayed_intervals = 0;
 
+  g_last_measurement_time   = start_time;
+
   while (!stop_token.stop_requested()) {
-    // Interruptible sleep until next check time
+    // Calculate the exact next scheduled time
+    auto next_check_time = start_time + ((interval_count + 1) * interval);
+
+    // Interruptible sleep until the exact next scheduled time
     {
       std::mutex dummy_mutex;
       std::unique_lock<std::mutex> sleep_lock(dummy_mutex);
-      if (g_sleep_cv.wait_for(sleep_lock, next_check_time - std::chrono::high_resolution_clock::now(), [&stop_token] {
+      if (g_sleep_cv.wait_until(sleep_lock, next_check_time, [&stop_token] {
             return stop_token.stop_requested();
           })) {
         break;  // Stop was requested during sleep
@@ -98,11 +101,7 @@ void nvml_power_monitoring_thread_func(std::stop_token stop_token,
 
     if (delay > interval / 2) {
       delayed_intervals++;
-      // Significant delay detected - adjust next check time to catch up
-      next_check_time = current_time + interval;
-    } else {
-      // Normal case - maintain regular intervals based on expected time
-      next_check_time = expected_time + interval;
+      // No need to adjust next_check_time, as it's recalculated each loop
     }
 
     double current_power_sum_W         = 0.0;
@@ -150,9 +149,9 @@ void nvml_power_monitoring_thread_func(std::stop_token stop_token,
 
     g_power_data_points.push_back({timestamp_ms, current_power_sum_W,
                                    g_total_integrated_energy_joules.load()});
- 
-     g_last_measurement_time = current_time;
- 
+
+    g_last_measurement_time = current_time;
+
     // Log timing issues periodically (every 100 intervals)
     if (interval_count % 100 == 0 && delayed_intervals > 0) {
       printf("KokkosP NVML Power: Timing info - %" PRId64 " intervals, %" PRId64
@@ -209,7 +208,7 @@ bool initialize_nvml() {
      result = nvmlDeviceGetHandleByIndex(i, &g_nvml_devices[i]);
      if (NVML_SUCCESS != result) {
        std::cerr << "KokkosP NVML Power: Failed to get handle for device " << i
-                << std::endl;
+                << "\n";
        g_nvml_devices[i] = nullptr;
        continue;
      }
@@ -289,11 +288,11 @@ void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
     return;
   }
 
-  // Start monitoring thread with 100ms interval using jthread
+  // Start monitoring thread with 20ms interval using jthread
   g_monitoring_thread = std::make_unique<std::jthread>(
-      nvml_power_monitoring_thread_func, std::chrono::milliseconds(100));
+      nvml_power_monitoring_thread_func, std::chrono::milliseconds(20));
 
-  printf("KokkosP NVML Power: Power monitoring started (100ms interval)\n");
+  printf("KokkosP NVML Power: Power monitoring started (20ms interval)\n");
 }
 
 void kokkosp_finalize_library() {

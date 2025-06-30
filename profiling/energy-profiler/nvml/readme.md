@@ -97,7 +97,7 @@ make -j
 
 ## Validation Considerations
 
-When comparing results between profilers, consider that:
+When comparing results between profilers:
 - Values may differ due to measurement methodology, not measurement error
 - Both approaches provide valid but potentially different perspectives on GPU energy consumption
 - Cross-validation with external power measurement tools could help establish ground truth

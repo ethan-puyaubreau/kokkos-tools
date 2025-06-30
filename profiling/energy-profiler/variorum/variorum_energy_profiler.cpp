@@ -21,6 +21,9 @@
 #include <cstdlib>
 #include <iomanip>
 #include <map>
+#include <unistd.h>
+#include <limits>
+#include <inttypes.h>
 
 namespace KokkosTools {
 namespace PowerProfiler {
@@ -277,8 +280,123 @@ std::chrono::nanoseconds VariorumPowerProfiler::get_time_relative_to_first_measu
 
 void VariorumPowerProfiler::generate_outputs() {
   output_to_console();
-  output_to_json();
+  //output_to_json();
   output_to_csv();
+
+  char hostname[256];
+  gethostname(hostname, 256);
+  int pid = (int)getpid();
+  char cwd[256];
+  getcwd(cwd, 256);
+
+  char csv_filename[512];
+  snprintf(csv_filename, 512, "%s-%d-variorum-power.csv", hostname, pid);
+  char csv_relative_filename[512];
+  snprintf(csv_relative_filename, 512, "%s-%d-variorum-power-relative.csv", hostname, pid);
+  char dat_filename[512];
+  snprintf(dat_filename, 512, "%s-%d-variorum-power.dat", hostname, pid);
+
+  FILE* csv_file = fopen(csv_filename, "w");
+  if (csv_file) {
+    fprintf(csv_file, "timestamp_system_epoch_ms,variorum_power_watts,variorum_integrated_energy_joules\n");
+    double integrated_energy = 0.0;
+    double last_power = 0.0;
+    int64_t last_time_ms = 0;
+    bool first = true;
+    for (const auto& reading : energy_readings_) {
+      auto sys_now = std::chrono::system_clock::now();
+      int64_t timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        reading.timestamp.time_since_epoch()).count();
+      double total_power = 0.0;
+      for (const auto& pair : reading.gpu_power_watts) total_power += pair.second;
+      if (!first) {
+        double dt = (timestamp_ms - last_time_ms) / 1000.0;
+        integrated_energy += 0.5 * (last_power + total_power) * dt;
+      }
+      fprintf(csv_file, "%" PRId64 ",%.6f,%.6f\n", timestamp_ms, total_power, integrated_energy);
+      last_power = total_power;
+      last_time_ms = timestamp_ms;
+      first = false;
+    }
+    fclose(csv_file);
+    printf("Variorum Power: Power CSV data written to %s/%s (%zu data points)\n", cwd, csv_filename, energy_readings_.size());
+  }
+
+  FILE* csv_relative_file = fopen(csv_relative_filename, "w");
+  if (csv_relative_file && !energy_readings_.empty()) {
+    fprintf(csv_relative_file, "time_relative_ms,power_watts,energy_relative_joules\n");
+    int64_t first_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
+      energy_readings_[0].timestamp.time_since_epoch()).count();
+    double first_energy = 0.0;
+    double integrated_energy = 0.0;
+    double last_power = 0.0;
+    int64_t last_time_ms = 0;
+    bool first = true;
+    for (const auto& reading : energy_readings_) {
+      int64_t timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        reading.timestamp.time_since_epoch()).count();
+      int64_t relative_time_ms = timestamp_ms - first_timestamp;
+      double total_power = 0.0;
+      for (const auto& pair : reading.gpu_power_watts) total_power += pair.second;
+      if (!first) {
+        double dt = (timestamp_ms - last_time_ms) / 1000.0;
+        integrated_energy += 0.5 * (last_power + total_power) * dt;
+      }
+      double relative_energy = integrated_energy - first_energy;
+      fprintf(csv_relative_file, "%" PRId64 ",%.6f,%.6f\n", relative_time_ms, total_power, relative_energy);
+      last_power = total_power;
+      last_time_ms = timestamp_ms;
+      first = false;
+    }
+    fclose(csv_relative_file);
+    printf("Variorum Power: Relative power CSV data written to %s/%s\n", cwd, csv_relative_filename);
+  }
+
+  FILE* dat_file = fopen(dat_filename, "w");
+  if (dat_file) {
+    double min_power = std::numeric_limits<double>::max();
+    double max_power = std::numeric_limits<double>::lowest();
+    double sum_power = 0.0;
+    double integrated_energy = 0.0;
+    double last_power = 0.0;
+    int64_t last_time_ms = 0;
+    bool first = true;
+    int64_t first_time_ms = 0, last_time_ms2 = 0;
+    for (const auto& reading : energy_readings_) {
+      int64_t timestamp_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        reading.timestamp.time_since_epoch()).count();
+      double total_power = 0.0;
+      for (const auto& pair : reading.gpu_power_watts) total_power += pair.second;
+      if (!first) {
+        double dt = (timestamp_ms - last_time_ms) / 1000.0;
+        integrated_energy += 0.5 * (last_power + total_power) * dt;
+      } else {
+        first_time_ms = timestamp_ms;
+      }
+      min_power = std::min(min_power, total_power);
+      max_power = std::max(max_power, total_power);
+      sum_power += total_power;
+      last_power = total_power;
+      last_time_ms = timestamp_ms;
+      last_time_ms2 = timestamp_ms;
+      first = false;
+    }
+    double elapsed_seconds = (last_time_ms2 - first_time_ms) / 1000.0;
+    double avg_power = energy_readings_.empty() ? 0.0 : sum_power / energy_readings_.size();
+    fprintf(dat_file, "# Variorum Power Profiler Results\n");
+    fprintf(dat_file, "execution_time_seconds: %.6f\n", elapsed_seconds);
+    fprintf(dat_file, "total_integrated_energy_joules: %.6f\n", integrated_energy);
+    fprintf(dat_file, "final_power_watts: %.6f\n", last_power);
+    if (elapsed_seconds > 0) {
+      fprintf(dat_file, "average_power_watts: %.6f\n", integrated_energy / elapsed_seconds);
+    }
+    fprintf(dat_file, "min_power_watts: %.6f\n", min_power);
+    fprintf(dat_file, "max_power_watts: %.6f\n", max_power);
+    fprintf(dat_file, "average_measured_power_watts: %.6f\n", avg_power);
+    fprintf(dat_file, "num_power_measurements: %zu\n", energy_readings_.size());
+    fclose(dat_file);
+    printf("Variorum Power: Power summary written to %s/%s\n", cwd, dat_filename);
+  }
 }
 
 std::string kernel_type_to_string(KernelType type) {
@@ -404,8 +522,20 @@ void VariorumPowerProfiler::output_to_json() {
 }
 
 void VariorumPowerProfiler::output_to_csv() {
-  // GPU Power readings CSV
-  std::ofstream gpu_power_csv(output_file_path_ + "_gpu_power.csv");
+  char hostname[256];
+  gethostname(hostname, 256);
+  int pid = (int)getpid();
+  char cwd[256];
+  getcwd(cwd, 256);
+  char kernels_filename[512];
+  snprintf(kernels_filename, 512, "%s-%d-variorum-power-kernels.csv", hostname, pid);
+  char regions_filename[512];
+  snprintf(regions_filename, 512, "%s-%d-variorum-power-regions.csv", hostname, pid);
+
+  char gpu_power_filename[512];
+  snprintf(gpu_power_filename, 512, "%s-%d-variorum-power-gpus.csv", hostname, pid);
+
+  std::ofstream gpu_power_csv(gpu_power_filename);
   if (gpu_power_csv.is_open()) {
     gpu_power_csv << "timestamp_nanoseconds,power_watts,device_id\n";
     for (const auto& reading : energy_readings_) {
@@ -417,42 +547,40 @@ void VariorumPowerProfiler::output_to_csv() {
       }
     }
     gpu_power_csv.close();
-    std::cout << "PowerProfiler: GPU Power CSV written to " << output_file_path_ << "_gpu_power.csv\n";
+    std::cout << "Variorum Power: GPU Power CSV written to " << cwd << "/" << gpu_power_filename << "\n";
   }
 
-  // Kernel timings CSV
-  std::ofstream kernels_csv(output_file_path_ + "_kernels.csv");
+  std::ofstream kernels_csv(kernels_filename);
   if (kernels_csv.is_open()) {
     kernels_csv << "kernel_id,name,type,start_time_ns,end_time_ns,duration_ns\n";
     for (const auto& kernel : completed_kernels_) {
       auto start_time_ns = get_time_relative_to_first_measurement(kernel.start_time);
       auto end_time_ns = get_time_relative_to_first_measurement(kernel.end_time);
       kernels_csv << kernel.kernel_id << ","
-                  << "\"" << kernel.name << "\","
+                  << "\"" << kernel.name << "\"," 
                   << kernel_type_to_string(kernel.type) << ","
                   << start_time_ns.count() << ","
                   << end_time_ns.count() << ","
                   << kernel.duration.count() << "\n";
     }
     kernels_csv.close();
-    std::cout << "PowerProfiler: Kernels CSV written to " << output_file_path_ << "_kernels.csv\n";
+    std::cout << "Variorum Power: Kernels CSV written to " << cwd << "/" << kernels_filename << "\n";
   }
 
-  // Regions CSV
   if (!completed_regions_.empty()) {
-    std::ofstream regions_csv(output_file_path_ + "_regions.csv");
+    std::ofstream regions_csv(regions_filename);
     if (regions_csv.is_open()) {
       regions_csv << "name,start_time_ns,end_time_ns,duration_ns\n";
       for (const auto& region : completed_regions_) {
         auto start_time_ns = get_time_relative_to_first_measurement(region.start_time);
         auto end_time_ns = get_time_relative_to_first_measurement(region.end_time);
-        regions_csv << "\"" << region.name << "\","
+        regions_csv << "\"" << region.name << "\"," 
                     << start_time_ns.count() << ","
                     << end_time_ns.count() << ","
                     << region.duration.count() << "\n";
       }
       regions_csv.close();
-      std::cout << "PowerProfiler: Regions CSV written to " << output_file_path_ << "_regions.csv\n";
+      std::cout << "Variorum Power: Regions CSV written to " << cwd << "/" << regions_filename << "\n";
     }
   }
 }

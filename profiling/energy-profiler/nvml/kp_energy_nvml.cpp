@@ -173,7 +173,7 @@ bool initialize_nvml() {
   nvmlReturn_t result = nvmlInit();
   if (NVML_SUCCESS != result) {
     std::cerr << "KokkosP NVML: Failed to initialize NVML: "
-              << nvmlErrorString(result) << std::endl;
+              << nvmlErrorString(result) << "\n";
     return false;
   }
 
@@ -181,7 +181,7 @@ bool initialize_nvml() {
   result = nvmlDeviceGetCount(&device_count);
   if (NVML_SUCCESS != result) {
     std::cerr << "KokkosP NVML: Failed to get device count: "
-              << nvmlErrorString(result) << std::endl;
+              << nvmlErrorString(result) << "\n";
     nvmlShutdown();
     return false;
   }
@@ -201,12 +201,11 @@ bool initialize_nvml() {
     result = nvmlDeviceGetHandleByIndex(i, &g_nvml_devices[i]);
     if (NVML_SUCCESS != result) {
       std::cerr << "KokkosP NVML: Failed to get handle for device " << i
-                << std::endl;
+                << "\n";
       g_nvml_devices[i] = nullptr;
       continue;
     }
 
-    // Get device name
     char device_name[NVML_DEVICE_NAME_BUFFER_SIZE];
     result = nvmlDeviceGetName(g_nvml_devices[i], device_name,
                                NVML_DEVICE_NAME_BUFFER_SIZE);
@@ -214,7 +213,6 @@ bool initialize_nvml() {
       printf("KokkosP NVML: Device %u: %s\n", i, device_name);
     }
 
-    // Get initial energy reading
     unsigned long long initial_energy_mJ;
     result = nvmlDeviceGetTotalEnergyConsumption(g_nvml_devices[i],
                                                  &initial_energy_mJ);
@@ -266,7 +264,6 @@ void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
     return;
   }
 
-  // Start monitoring thread with 100ms interval using jthread
   g_monitoring_thread = std::make_unique<std::jthread>(
       nvml_monitoring_thread_func, std::chrono::milliseconds(100));
 
@@ -281,10 +278,9 @@ void kokkosp_finalize_library() {
       "\n");
   printf("KokkosP: NVML Energy Profiler Finalization\n");
 
-  // Stop monitoring thread - jthread handles joining automatically
   if (g_monitoring_thread) {
     g_monitoring_thread->request_stop();
-    g_sleep_cv.notify_all();  // Wake up the sleeping thread
+    g_sleep_cv.notify_all();
     g_monitoring_thread.reset();
   }
 
