@@ -28,11 +28,7 @@
 #include <vector>
 #include <string>
 #include <chrono>
-#include <thread>
-#include <atomic>
 #include <mutex>
-#include <numeric>
-#include <algorithm>
 #include <iomanip>
 #include <cmath>
 #include <memory>
@@ -41,19 +37,19 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <fstream>
-#include <deque>
 
 #include "kp_core.hpp"
 #include "../provider/provider_variorum.hpp"
 #include "../common/daemon.hpp"
 #include "../common/filename_prefix.hpp"
-#include "../common/timer.hpp"
-#include "../tools/kernel_timer_tool.hpp"
+#include "../common/timer_system.hpp"
+
+using namespace KokkosTools::EnergyProfiler;
 
 namespace KokkosTools {
 namespace VariorumPower {
 
-KernelTimerTool timer;
+Timer::KernelTimerTool timer;
 
 // --- Data Structures for Self-Contained Management ---
 
@@ -104,8 +100,16 @@ void variorum_power_monitoring_tick() {
     return;
   }
 
-  double current_power_W = g_variorum_provider->get_total_power_usage();
-  int64_t timestamp_ns   = get_current_epoch_ns();
+  double current_power_W = 0.0;
+  Result power_result =
+      g_variorum_provider->get_total_power_usage(current_power_W);
+  if (!power_result.is_success()) {
+    std::cerr << "KokkosP Variorum Power: Failed to get power reading: "
+              << power_result.message << std::endl;
+    return;
+  }
+
+  int64_t timestamp_ns = get_current_epoch_ns();
 
   std::lock_guard<std::mutex> lock(g_data_mutex);
   g_power_data.push_back({timestamp_ns, current_power_W});
@@ -129,9 +133,11 @@ void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
   g_start_time = std::chrono::high_resolution_clock::now();
 
   g_variorum_provider = std::make_unique<VariorumProvider>();
-  if (!g_variorum_provider->initialize()) {
-    std::cerr << "KokkosP Variorum Power: Failed to initialize Variorum, power "
-                 "monitoring disabled\n";
+  Result init_result  = g_variorum_provider->initialize();
+  if (!init_result.is_success()) {
+    std::cerr << "KokkosP Variorum Power: Failed to initialize Variorum: "
+              << init_result.message << std::endl;
+    std::cerr << "KokkosP Variorum Power: Power monitoring disabled\n";
     g_variorum_provider.reset();
     return;
   }

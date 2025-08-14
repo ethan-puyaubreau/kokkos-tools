@@ -3,6 +3,8 @@
 #include <thread>
 #include "../provider/provider_nvml.hpp"
 
+using namespace KokkosTools::EnergyProfiler;
+
 void test_nvml_provider() {
   std::cout << "=== NVML Provider Test ===" << std::endl;
 
@@ -10,8 +12,10 @@ void test_nvml_provider() {
 
   // Test initialization
   std::cout << "\n1. Testing initialization..." << std::endl;
-  if (!provider.initialize()) {
-    std::cout << "ERROR: Failed to initialize NVML provider" << std::endl;
+  Result init_result = provider.initialize();
+  if (!init_result.is_success()) {
+    std::cout << "ERROR: Failed to initialize NVML provider: "
+              << init_result.message << std::endl;
     return;
   }
   std::cout << "SUCCESS: NVML provider initialized successfully" << std::endl;
@@ -40,41 +44,55 @@ void test_nvml_provider() {
 
     // Individual device power
     for (size_t i = 0; i < device_count; ++i) {
-      double power = provider.get_device_power_usage(i);
-      if (power >= 0.0) {
+      double power        = 0.0;
+      Result power_result = provider.get_device_power_usage(i, power);
+      if (power_result.is_success()) {
         std::cout << "  Device " << i << ": " << power << " W" << std::endl;
       } else {
-        std::cout << "  Device " << i << ": Failed to read power" << std::endl;
+        std::cout << "  Device " << i
+                  << ": Failed to read power: " << power_result.message
+                  << std::endl;
       }
     }
 
     // Individual device direct power
     for (size_t i = 0; i < device_count; ++i) {
-      double direct_power = provider.get_device_power_usage_direct(i);
-      if (direct_power >= 0.0) {
+      double direct_power = 0.0;
+      Result direct_result =
+          provider.get_device_power_usage_direct(i, direct_power);
+      if (direct_result.is_success()) {
         std::cout << "  Device " << i << " (Direct): " << direct_power << " W"
                   << std::endl;
       } else {
         std::cout << "  Device " << i
-                  << " (Direct): Failed to read direct power" << std::endl;
+                  << " (Direct): Failed to read direct power: "
+                  << direct_result.message << std::endl;
       }
     }
 
     // Current energy consumption
     for (size_t i = 0; i < device_count; ++i) {
-      double energy = provider.get_current_energy_consumption(i);
-      if (energy >= 0.0) {
+      double energy        = 0.0;
+      Result energy_result = provider.get_current_energy_consumption(i, energy);
+      if (energy_result.is_success()) {
         std::cout << "  Device " << i << " Energy: " << energy << " J"
                   << std::endl;
       } else {
-        std::cout << "  Device " << i << " Energy: Failed to read energy"
+        std::cout << "  Device " << i
+                  << " Energy: Failed to read energy: " << energy_result.message
                   << std::endl;
       }
     }
 
     // Total power
-    double total_power = provider.get_total_power_usage();
-    std::cout << "  Total Power: " << total_power << " W" << std::endl;
+    double total_power  = 0.0;
+    Result total_result = provider.get_total_power_usage(total_power);
+    if (total_result.is_success()) {
+      std::cout << "  Total Power: " << total_power << " W" << std::endl;
+    } else {
+      std::cout << "  Total Power: Failed to read: " << total_result.message
+                << std::endl;
+    }
 
     if (sample < 4) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));

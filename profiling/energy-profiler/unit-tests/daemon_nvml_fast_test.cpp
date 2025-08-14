@@ -5,11 +5,12 @@
 #include <iomanip>
 #include <vector>
 #include <algorithm>
-#include <numeric>
 #include <mutex>
 #include <cmath>
 #include "../common/daemon.hpp"
 #include "../provider/provider_nvml.hpp"
+
+using namespace KokkosTools::EnergyProfiler;
 
 // Global variables for the monitoring function
 static NVMLProvider* g_nvml_provider = nullptr;
@@ -25,7 +26,11 @@ void fast_power_monitoring_function() {
     return;
   }
 
-  double current_power = g_nvml_provider->get_total_power_usage();
+  double current_power = 0.0;
+  Result power_result  = g_nvml_provider->get_total_power_usage(current_power);
+  if (!power_result.is_success()) {
+    return;  // Skip this sample if we can't get power reading
+  }
 
   // Update statistics atomically
   g_sample_count.fetch_add(1);
@@ -193,10 +198,19 @@ bool test_daemon_nvml_fast_integration() {
     if (device_count > 1) {
       std::cout << "\n=== Per-Device Final Readings ===" << std::endl;
       for (size_t i = 0; i < device_count; ++i) {
-        double device_power     = nvml_provider.get_device_power_usage(i);
+        double device_power = 0.0;
+        Result device_result =
+            nvml_provider.get_device_power_usage(i, device_power);
         std::string device_name = nvml_provider.get_device_name(i);
-        std::cout << "  " << device_name << ": " << std::fixed
-                  << std::setprecision(2) << device_power << " W" << std::endl;
+
+        if (device_result.is_success()) {
+          std::cout << "  " << device_name << ": " << std::fixed
+                    << std::setprecision(2) << device_power << " W"
+                    << std::endl;
+        } else {
+          std::cout << "  " << device_name << ": Failed to read power"
+                    << std::endl;
+        }
       }
     }
   }

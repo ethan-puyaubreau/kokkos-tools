@@ -2,22 +2,25 @@
 find_package(Threads REQUIRED)
 
 kp_add_library(kp_energy_kernel_timer kp_energy_kernel_timer.cpp
-    ../common/timer.cpp
+    ../common/timer_system.cpp
     ../common/filename_prefix.cpp
-    ../tools/kernel_timer_tool.cpp
 )
 
 target_include_directories(kp_energy_kernel_timer PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
+# Add verbose output option
+if(ENABLE_ENERGY_PROFILER_VERBOSE)
+    target_compile_definitions(kp_energy_kernel_timer PRIVATE ENABLE_VERBOSE_OUTPUT)
+endif()
+
 if(KOKKOSTOOLS_HAS_VARIORUM)
     kp_add_library(kp_variorum_power kp_variorum_power.cpp
     ../common/daemon.cpp
     ../common/filename_prefix.cpp
-    ../common/timer.cpp
+    ../common/timer_system.cpp
     ../provider/provider_variorum.cpp
-    ../tools/kernel_timer_tool.cpp
 )
 
 # Find Threads package for pthread support (needed by std::thread in daemon.cpp)
@@ -43,9 +46,8 @@ endif()
 kp_add_library(kp_nvml_power kp_nvml_power.cpp
     ../common/daemon.cpp
     ../common/filename_prefix.cpp
-    ../common/timer.cpp
+    ../common/timer_system.cpp
     ../provider/provider_nvml.cpp
-    ../tools/kernel_timer_tool.cpp
 )
 target_link_libraries(kp_nvml_power PRIVATE CUDA::nvml Threads::Threads)
 
@@ -57,9 +59,8 @@ target_include_directories(kp_nvml_power PRIVATE
 kp_add_library(kp_nvml_direct_power kp_nvml_direct_power.cpp
     ../common/daemon.cpp
     ../common/filename_prefix.cpp
-    ../common/timer.cpp
+    ../common/timer_system.cpp
     ../provider/provider_nvml.cpp
-    ../tools/kernel_timer_tool.cpp
 )
 target_link_libraries(kp_nvml_direct_power PRIVATE CUDA::nvml Threads::Threads)
 
@@ -70,9 +71,8 @@ target_include_directories(kp_nvml_direct_power PRIVATE
 # NVML Energy Consumption Tool (no daemon needed)
 kp_add_library(kp_nvml_energy_consumption kp_nvml_energy_consumption.cpp
     ../common/filename_prefix.cpp
-    ../common/timer.cpp
+    ../common/timer_system.cpp
     ../provider/provider_nvml.cpp
-    ../tools/kernel_timer_tool.cpp
 )
 target_link_libraries(kp_nvml_energy_consumption PRIVATE CUDA::nvml)
 

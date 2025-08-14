@@ -3,6 +3,8 @@
 #include <thread>
 #include "../provider/provider_variorum.hpp"
 
+using namespace KokkosTools::EnergyProfiler;
+
 void test_variorum_provider() {
   std::cout << "=== Variorum Provider Test ===" << std::endl;
 
@@ -10,8 +12,10 @@ void test_variorum_provider() {
 
   // Test initialization
   std::cout << "\n1. Testing initialization..." << std::endl;
-  if (!provider.initialize()) {
-    std::cout << "ERROR: Failed to initialize Variorum provider" << std::endl;
+  Result init_result = provider.initialize();
+  if (!init_result.is_success()) {
+    std::cout << "ERROR: Failed to initialize Variorum provider: "
+              << init_result.message << std::endl;
     return;
   }
   std::cout << "SUCCESS: Variorum provider initialized successfully"
@@ -41,17 +45,25 @@ void test_variorum_provider() {
 
     // Individual device power
     for (size_t i = 0; i < device_count; ++i) {
-      double power = provider.get_device_power_usage(i);
-      if (power >= 0.0) {
+      double power         = 0.0;
+      Result device_result = provider.get_device_power_usage(i, power);
+      if (device_result.is_success()) {
         std::cout << "  Device " << i << ": " << power << " W" << std::endl;
       } else {
-        std::cout << "  Device " << i << ": Failed to read power" << std::endl;
+        std::cout << "  Device " << i << ": Failed to read power - "
+                  << device_result.message << std::endl;
       }
     }
 
     // Total power
-    double total_power = provider.get_total_power_usage();
-    std::cout << "  Total Power: " << total_power << " W" << std::endl;
+    double total_power  = 0.0;
+    Result total_result = provider.get_total_power_usage(total_power);
+    if (total_result.is_success()) {
+      std::cout << "  Total Power: " << total_power << " W" << std::endl;
+    } else {
+      std::cout << "  Total Power: Failed to read - " << total_result.message
+                << std::endl;
+    }
 
     if (sample < 4) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));

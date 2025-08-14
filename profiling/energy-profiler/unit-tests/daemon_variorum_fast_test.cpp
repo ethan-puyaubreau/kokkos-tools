@@ -11,6 +11,8 @@
 #include "../common/daemon.hpp"
 #include "../provider/provider_variorum.hpp"
 
+using namespace KokkosTools::EnergyProfiler;
+
 // Global variables for the monitoring function
 static VariorumProvider* g_variorum_provider = nullptr;
 static std::atomic<uint32_t> g_sample_count{0};
@@ -25,7 +27,12 @@ void fast_power_monitoring_function() {
     return;
   }
 
-  double current_power = g_variorum_provider->get_total_power_usage();
+  double current_power = 0.0;
+  Result power_result =
+      g_variorum_provider->get_total_power_usage(current_power);
+  if (!power_result.is_success()) {
+    return;  // Skip this sample if we can't get power reading
+  }
 
   // Update statistics atomically
   g_sample_count.fetch_add(1);
@@ -194,10 +201,19 @@ bool test_daemon_variorum_fast_integration() {
     if (device_count > 1) {
       std::cout << "\n=== Per-Device Final Readings ===" << std::endl;
       for (size_t i = 0; i < device_count; ++i) {
-        double device_power     = variorum_provider.get_device_power_usage(i);
+        double device_power = 0.0;
+        Result device_result =
+            variorum_provider.get_device_power_usage(i, device_power);
         std::string device_name = variorum_provider.get_device_name(i);
-        std::cout << "  " << device_name << ": " << std::fixed
-                  << std::setprecision(2) << device_power << " W" << std::endl;
+
+        if (device_result.is_success()) {
+          std::cout << "  " << device_name << ": " << std::fixed
+                    << std::setprecision(2) << device_power << " W"
+                    << std::endl;
+        } else {
+          std::cout << "  " << device_name << ": Error - "
+                    << device_result.message << std::endl;
+        }
       }
     }
   }

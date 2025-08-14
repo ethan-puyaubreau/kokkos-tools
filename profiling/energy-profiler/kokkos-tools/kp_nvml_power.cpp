@@ -34,22 +34,26 @@
 #include "../common/daemon.hpp"
 #include "../provider/provider_nvml.hpp"
 #include "../common/filename_prefix.hpp"
-#include "../common/timer.hpp"
-#include "../tools/kernel_timer_tool.hpp"
+#include "../common/timer_system.hpp"
+#include "../common/error_handling.hpp"
 
 namespace KokkosTools {
 namespace Power {
 
+using EnergyProfiler::NVMLProvider;
+using EnergyProfiler::Result;
+
 // --- Configuration ---
 // The interval in milliseconds for power sampling.
-constexpr int SAMPLING_INTERVAL_MS = 20;
+constexpr int SAMPLING_INTERVAL_MS          = 20;
+static constexpr const char* COMPONENT_NAME = "PowerProfiler";
 
 // --- Global State for the Profiler ---
 static std::unique_ptr<Daemon> g_power_daemon;
 static std::unique_ptr<NVMLProvider> g_nvml_provider;
 
 // Timer tool for kernel and region timing
-static KernelTimerTool g_timer;
+static Timer::KernelTimerTool g_timer;
 
 // Structure to store a single power measurement with a timestamp.
 struct PowerSample {
@@ -73,7 +77,13 @@ void power_monitoring_tick() {
     return;
   }
 
-  double current_power = g_nvml_provider->get_total_power_usage();
+  double current_power = 0.0;
+  Result result        = g_nvml_provider->get_total_power_usage(current_power);
+  if (!result) {
+    ENERGY_PROFILER_LOG_WARNING(
+        COMPONENT_NAME, "Failed to get total power usage: " + result.message);
+    return;
+  }
 
   std::lock_guard<std::mutex> lock(g_samples_mutex);
   g_power_samples.push_back(

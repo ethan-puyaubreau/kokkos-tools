@@ -23,31 +23,33 @@
  */
 
 #include <iostream>
-#include <vector>
-#include <string>
-#include <chrono>
-#include <mutex>
-#include <iomanip>
-#include <cmath>
 #include <fstream>
+#include <memory>
 #include <unordered_map>
 #include <stack>
-#include <memory>
+#include <cstring>
+#include <mutex>
+#include <iomanip>
 
 #include "kp_core.hpp"
 #include "../provider/provider_nvml.hpp"
 #include "../common/filename_prefix.hpp"
-#include "../common/timer.hpp"
-#include "../tools/kernel_timer_tool.hpp"
+#include "../common/timer_system.hpp"
+#include "../common/error_handling.hpp"
 
 namespace KokkosTools {
 namespace EnergyConsumption {
 
+using EnergyProfiler::ErrorCode;
+using EnergyProfiler::NVMLProvider;
+using EnergyProfiler::Result;
+
 // --- Global State for the Profiler ---
+static constexpr const char* COMPONENT_NAME = "EnergyConsumption";
 static std::unique_ptr<NVMLProvider> g_nvml_provider;
 
 // Timer tool for kernel and region timing
-static KernelTimerTool g_timer;
+static Timer::KernelTimerTool g_timer;
 
 static size_t g_device_count = 0;
 static std::chrono::high_resolution_clock::time_point g_start_time;
@@ -113,13 +115,24 @@ EnergySnapshot capture_energy_snapshot() {
     for (size_t i = 0; i < g_device_count; ++i) {
       snapshot.device_energies_joules.push_back(-1.0);
     }
+    ENERGY_PROFILER_LOG_WARNING(
+        COMPONENT_NAME,
+        "Provider not initialized, using invalid energy values");
     return snapshot;
   }
 
   // Collect energy for each device
   for (size_t i = 0; i < g_device_count; ++i) {
-    double energy = g_nvml_provider->get_current_energy_consumption(i);
-    snapshot.device_energies_joules.push_back(energy);
+    double energy = 0.0;
+    Result result = g_nvml_provider->get_current_energy_consumption(i, energy);
+    if (result) {
+      snapshot.device_energies_joules.push_back(energy);
+    } else {
+      snapshot.device_energies_joules.push_back(-1.0);
+      ENERGY_PROFILER_LOG_WARNING(
+          COMPONENT_NAME, "Failed to get energy for device " +
+                              std::to_string(i) + ": " + result.message);
+    }
   }
 
   return snapshot;
@@ -159,60 +172,84 @@ double calculate_duration_seconds(const EnergySnapshot& start,
   return std::chrono::duration<double>(end.timestamp - start.timestamp).count();
 }
 
-void export_energy_consumption_csv(const std::string& filename) {
+/**
+ * @brief Exports energy consumption data to CSV file with error handling
+ */
+Result export_energy_consumption_csv(const std::string& filename) {
   std::ofstream file(filename);
   if (!file.is_open()) {
-    std::cerr << "ERROR: Unable to open file " << filename << " for writing.\n";
-    return;
+    std::string error_msg = "Unable to open file " + filename + " for writing";
+    ENERGY_PROFILER_LOG_ERROR(COMPONENT_NAME, error_msg);
+    return Result(ErrorCode::FILE_WRITE_FAILED, error_msg);
   }
 
-  // Write kernels
-  file << "type,name,duration_seconds";
-  for (size_t i = 0; i < g_device_count; ++i) {
-    file << ",device_" << i << "_energy_joules";
-  }
-  file << "\n";
-
-  for (const auto& record : g_kernel_energy_records) {
-    file << "kernel," << record.name << "," << record.duration_seconds;
+  try {
+    // Write header
+    file << "type,name,duration_seconds";
     for (size_t i = 0; i < g_device_count; ++i) {
-      if (i < record.energy_consumed_joules.size()) {
-        file << "," << record.energy_consumed_joules[i];
-      } else {
-        file << ",-1";
-      }
+      file << ",device_" << i << "_energy_joules";
     }
     file << "\n";
-  }
 
-  for (const auto& record : g_region_energy_records) {
-    file << "region," << record.name << "," << record.duration_seconds;
-    for (size_t i = 0; i < g_device_count; ++i) {
-      if (i < record.energy_consumed_joules.size()) {
-        file << "," << record.energy_consumed_joules[i];
-      } else {
-        file << ",-1";
+    // Write kernels
+    for (const auto& record : g_kernel_energy_records) {
+      file << "kernel," << record.name << "," << record.duration_seconds;
+      for (size_t i = 0; i < g_device_count; ++i) {
+        if (i < record.energy_consumed_joules.size()) {
+          file << "," << record.energy_consumed_joules[i];
+        } else {
+          file << ",-1";
+        }
       }
+      file << "\n";
     }
-    file << "\n";
-  }
 
-  for (const auto& record : g_deep_copy_energy_records) {
-    std::string name = record.src_name + "_to_" + record.dst_name + "_size_" +
-                       std::to_string(record.size);
-    file << "deepcopy," << name << "," << record.duration_seconds;
-    for (size_t i = 0; i < g_device_count; ++i) {
-      if (i < record.energy_consumed_joules.size()) {
-        file << "," << record.energy_consumed_joules[i];
-      } else {
-        file << ",-1";
+    // Write regions
+    for (const auto& record : g_region_energy_records) {
+      file << "region," << record.name << "," << record.duration_seconds;
+      for (size_t i = 0; i < g_device_count; ++i) {
+        if (i < record.energy_consumed_joules.size()) {
+          file << "," << record.energy_consumed_joules[i];
+        } else {
+          file << ",-1";
+        }
       }
+      file << "\n";
     }
-    file << "\n";
-  }
 
-  file.close();
-  std::cout << "Energy consumption data exported to " << filename << std::endl;
+    // Write deep copies
+    for (const auto& record : g_deep_copy_energy_records) {
+      std::string name = record.src_name + "_to_" + record.dst_name + "_size_" +
+                         std::to_string(record.size);
+      file << "deepcopy," << name << "," << record.duration_seconds;
+      for (size_t i = 0; i < g_device_count; ++i) {
+        if (i < record.energy_consumed_joules.size()) {
+          file << "," << record.energy_consumed_joules[i];
+        } else {
+          file << ",-1";
+        }
+      }
+      file << "\n";
+    }
+
+    file.close();
+
+    if (file.fail()) {
+      std::string error_msg = "Failed to write data to file " + filename;
+      ENERGY_PROFILER_LOG_ERROR(COMPONENT_NAME, error_msg);
+      return Result(ErrorCode::FILE_WRITE_FAILED, error_msg);
+    }
+
+    ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME,
+                             "Energy consumption data exported to " + filename);
+    return Result(ErrorCode::SUCCESS);
+
+  } catch (const std::exception& e) {
+    std::string error_msg =
+        "Exception while writing to file " + filename + ": " + e.what();
+    ENERGY_PROFILER_LOG_ERROR(COMPONENT_NAME, error_msg);
+    return Result(ErrorCode::FILE_WRITE_FAILED, error_msg);
+  }
 }
 
 void print_energy_summary() {
@@ -261,8 +298,12 @@ void print_energy_summary() {
   std::cout << "--------------------------------------------\n";
 
   for (size_t dev = 0; dev < g_device_count; ++dev) {
-    std::cout << "Device " << dev << " ("
-              << g_nvml_provider->get_device_name(dev) << "):\n";
+    std::string device_name = "Unknown Device";
+    if (g_nvml_provider && g_nvml_provider->is_initialized()) {
+      device_name = g_nvml_provider->get_device_name(dev);
+    }
+
+    std::cout << "Device " << dev << " (" << device_name << "):\n";
     std::cout << "  Total Kernel Energy:       " << total_kernel_energy[dev]
               << " J\n";
     std::cout << "  Total Region Energy:       " << total_region_energy[dev]
@@ -282,35 +323,41 @@ void print_energy_summary() {
 void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
                           const uint32_t devInfoCount,
                           Kokkos_Profiling_KokkosPDeviceInfo* deviceInfo) {
-  std::cout << "Kokkos Energy Consumption Profiler: Initializing...\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "Initializing...");
 
   // Initialize the timer tool
   g_timer.init_library(loadSeq, interfaceVer, devInfoCount, deviceInfo);
 
-  g_nvml_provider = std::make_unique<NVMLProvider>();
-  if (!g_nvml_provider->initialize()) {
-    std::cerr << "ERROR: Failed to initialize NVML provider. Energy "
-                 "consumption profiling disabled.\n";
+  g_nvml_provider    = std::make_unique<NVMLProvider>();
+  Result init_result = g_nvml_provider->initialize();
+  if (!init_result) {
+    std::string error_msg =
+        "Failed to initialize NVML provider: " + init_result.message;
+    ENERGY_PROFILER_LOG_ERROR(
+        COMPONENT_NAME, error_msg + ". Energy consumption profiling disabled.");
     g_nvml_provider.reset();  // Release the provider
     return;
   }
 
   g_device_count = g_nvml_provider->get_device_count();
-  std::cout << "SUCCESS: NVML provider initialized with " << g_device_count
-            << " device(s).\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "NVML provider initialized with " +
+                                               std::to_string(g_device_count) +
+                                               " device(s)");
 
   // Print device information
   for (size_t i = 0; i < g_device_count; ++i) {
-    std::cout << "  Device " << i << ": " << g_nvml_provider->get_device_name(i)
-              << std::endl;
+    ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME,
+                             "Device " + std::to_string(i) + ": " +
+                                 g_nvml_provider->get_device_name(i));
   }
 
   g_start_time = std::chrono::high_resolution_clock::now();
-  std::cout << "SUCCESS: Energy consumption monitoring initialized.\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME,
+                           "Energy consumption monitoring initialized");
 }
 
 void kokkosp_finalize_library() {
-  std::cout << "\nKokkos Energy Consumption Profiler: Finalizing...\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "Finalizing...");
 
   // Finalize the timer
   g_timer.finalize_library();
@@ -319,7 +366,9 @@ void kokkosp_finalize_library() {
   auto total_duration_s =
       std::chrono::duration<double>(end_time - g_start_time).count();
 
-  std::cout << "Total Monitoring Duration: " << total_duration_s << " s\n";
+  ENERGY_PROFILER_LOG_INFO(
+      COMPONENT_NAME,
+      "Total Monitoring Duration: " + std::to_string(total_duration_s) + " s");
 
   print_energy_summary();
 
@@ -327,27 +376,30 @@ void kokkosp_finalize_library() {
 
   // Export energy data
   std::string csv_filename = prefix + "_nvml_energy_consumption.csv";
-  std::cout << "Exporting energy consumption data to " << csv_filename
-            << "...\n";
-  export_energy_consumption_csv(csv_filename);
+  ENERGY_PROFILER_LOG_INFO(
+      COMPONENT_NAME, "Exporting energy consumption data to " + csv_filename);
+  Result export_result = export_energy_consumption_csv(csv_filename);
+  if (!export_result) {
+    ENERGY_PROFILER_LOG_ERROR(COMPONENT_NAME, "Failed to export energy data: " +
+                                                  export_result.message);
+  }
 
   // Export timing data
   const auto& kernels = g_timer.get_kernel_timings();
-  KokkosTools::Timer::print_kernels_summary(kernels);
-  KokkosTools::Timer::export_kernels_csv(kernels, prefix + "_kernels.csv");
+  Timer::print_kernels_summary(kernels);
+  Timer::export_kernels_csv(kernels, prefix + "_kernels.csv");
 
   const auto& regions = g_timer.get_region_timings();
-  KokkosTools::Timer::print_regions_summary(regions);
-  KokkosTools::Timer::export_regions_csv(regions, prefix + "_regions.csv");
+  Timer::print_regions_summary(regions);
+  Timer::export_regions_csv(regions, prefix + "_regions.csv");
 
   const auto& deepcopies = g_timer.get_deep_copy_timings();
-  KokkosTools::Timer::print_deepcopies_summary(deepcopies);
-  KokkosTools::Timer::export_deepcopies_csv(deepcopies,
-                                            prefix + "_deepcopies.csv");
+  Timer::print_deepcopies_summary(deepcopies);
+  Timer::export_deepcopies_csv(deepcopies, prefix + "_deepcopies.csv");
 
   if (g_nvml_provider) {
     g_nvml_provider->finalize();
-    std::cout << "SUCCESS: NVML provider finalized.\n";
+    ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "NVML provider finalized");
   }
 }
 

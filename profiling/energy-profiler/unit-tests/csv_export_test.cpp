@@ -18,8 +18,9 @@
 #include <deque>
 #include <chrono>
 #include <thread>
-#include "../common/timer.hpp"
-#include "../tools/kernel_timer_tool.hpp"
+#include "../common/timer_system.hpp"
+
+using namespace KokkosTools::Timer;
 
 int main() {
   std::cout << "Testing CSV export functions..." << std::endl;

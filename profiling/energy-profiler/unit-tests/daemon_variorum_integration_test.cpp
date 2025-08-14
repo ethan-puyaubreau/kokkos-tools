@@ -6,6 +6,8 @@
 #include "../common/daemon.hpp"
 #include "../provider/provider_variorum.hpp"
 
+using namespace KokkosTools::EnergyProfiler;
+
 // Global variables for the monitoring function
 static VariorumProvider* g_variorum_provider = nullptr;
 static std::atomic<uint32_t> g_sample_count{0};
@@ -18,7 +20,15 @@ void power_monitoring_function() {
     return;
   }
 
-  double current_power = g_variorum_provider->get_total_power_usage();
+  double current_power = 0.0;
+  Result power_result =
+      g_variorum_provider->get_total_power_usage(current_power);
+  if (!power_result.is_success()) {
+    std::cout << "ERROR: Failed to get power reading: " << power_result.message
+              << std::endl;
+    return;
+  }
+
   g_last_power.store(current_power);
 
   // Accumulate energy (Power * Time)
@@ -40,8 +50,10 @@ void power_monitoring_function() {
   size_t device_count = g_variorum_provider->get_device_count();
   if (device_count > 1) {
     for (size_t i = 0; i < device_count; ++i) {
-      double device_power = g_variorum_provider->get_device_power_usage(i);
-      if (device_power >= 0.0) {
+      double device_power = 0.0;
+      Result device_result =
+          g_variorum_provider->get_device_power_usage(i, device_power);
+      if (device_result.is_success()) {
         std::cout << "  " << g_variorum_provider->get_device_name(i) << ": "
                   << device_power << " W" << std::endl;
       }
@@ -60,8 +72,10 @@ bool test_daemon_variorum_integration() {
   // Initialize Variorum provider
   std::cout << "\n1. Initializing Variorum provider..." << std::endl;
   VariorumProvider variorum_provider;
-  if (!variorum_provider.initialize()) {
-    std::cout << "ERROR: Failed to initialize Variorum provider" << std::endl;
+  Result init_result = variorum_provider.initialize();
+  if (!init_result.is_success()) {
+    std::cout << "ERROR: Failed to initialize Variorum provider: "
+              << init_result.message << std::endl;
     return false;
   }
 

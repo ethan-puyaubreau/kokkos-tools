@@ -24,17 +24,21 @@
 #include <iostream>
 
 #include "kp_core.hpp"
-#include "../tools/kernel_timer_tool.hpp"
+#include "../common/timer_system.hpp"
 #include "../common/filename_prefix.hpp"
-#include "../common/timer.hpp"
 
 namespace KokkosTools {
 namespace KernelTimer {
 
 // --- Core Initialization ---
-KernelTimerTool timer;
+Timer::KernelTimerTool timer;
 
-bool VERBOSE = false;
+#ifdef ENABLE_VERBOSE_OUTPUT
+constexpr bool VERBOSE = true;
+#else
+constexpr bool VERBOSE = false;
+#endif
+
 std::string KOKKOS_PROFILE_LIBRARY_NAME =
     "Kokkos Kernel Timer for Energy Profiler";
 

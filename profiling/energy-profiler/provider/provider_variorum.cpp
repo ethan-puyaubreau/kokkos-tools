@@ -3,48 +3,52 @@
 #include <set>
 #include <cstring>
 
-VariorumProvider::VariorumProvider() : initialized_(false) {}
+using namespace KokkosTools::EnergyProfiler;
+
+VariorumProvider::VariorumProvider() : is_initialized_(false) {}
 
 VariorumProvider::~VariorumProvider() {
-  if (initialized_) {
+  if (is_initialized_) {
     finalize();
   }
 }
 
-bool VariorumProvider::initialize() {
-  if (initialized_) {
-    return true;
+Result VariorumProvider::initialize() {
+  if (is_initialized_) {
+    return Result(ErrorCode::SUCCESS);
   }
 
   // Initialize Variorum (in the original code, this was a no-op)
   // For now, we'll assume Variorum is available and working
 
   // Discover devices
-  if (!discover_devices()) {
-    return false;
+  Result discover_result = discover_devices();
+  if (!discover_result.is_success()) {
+    return discover_result;
   }
 
-  initialized_ = true;
-  std::cout << "Variorum Provider: Successfully initialized with "
-            << device_ids_.size() << " device(s)" << std::endl;
+  is_initialized_ = true;
+  ENERGY_PROFILER_LOG_INFO(
+      COMPONENT_NAME, "Successfully initialized with " +
+                          std::to_string(device_ids_.size()) + " device(s)");
 
-  return true;
+  return Result(ErrorCode::SUCCESS);
 }
 
 void VariorumProvider::finalize() {
-  if (!initialized_) {
+  if (!is_initialized_) {
     return;
   }
 
   cleanup_devices();
-  initialized_ = false;
+  is_initialized_ = false;
 
-  std::cout << "Variorum Provider: Finalized" << std::endl;
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "Finalized");
 }
 
-double VariorumProvider::get_total_power_usage() {
-  if (!initialized_) {
-    return 0.0;
+Result VariorumProvider::get_total_power_usage(double& power_watts) {
+  if (!is_initialized_) {
+    return Result(ErrorCode::PROVIDER_INIT_FAILED, "Provider not initialized");
   }
 
   double total_power_W                      = 0.0;
@@ -56,12 +60,15 @@ double VariorumProvider::get_total_power_usage() {
     }
   }
 
-  return total_power_W;
+  power_watts = total_power_W;
+  return Result(ErrorCode::SUCCESS);
 }
 
-double VariorumProvider::get_device_power_usage(size_t device_index) {
-  if (!initialized_ || device_index >= device_ids_.size()) {
-    return -1.0;
+Result VariorumProvider::get_device_power_usage(size_t device_index,
+                                                double& power_watts) {
+  Result validation_result = validate_device_index(device_index);
+  if (!validation_result.is_success()) {
+    return validation_result;
   }
 
   uint32_t device_id                        = device_ids_[device_index];
@@ -69,10 +76,13 @@ double VariorumProvider::get_device_power_usage(size_t device_index) {
 
   auto it = power_readings.find(device_id);
   if (it != power_readings.end()) {
-    return it->second;
+    power_watts = it->second;
+    return Result(ErrorCode::SUCCESS);
   }
 
-  return -1.0;
+  return Result(
+      ErrorCode::MEASUREMENT_FAILED,
+      "Failed to read power for device " + std::to_string(device_index));
 }
 
 size_t VariorumProvider::get_device_count() const { return device_ids_.size(); }
@@ -84,21 +94,20 @@ std::string VariorumProvider::get_device_name(size_t device_index) const {
   return device_names_[device_index];
 }
 
-bool VariorumProvider::discover_devices() {
+Result VariorumProvider::discover_devices() {
   std::set<uint32_t> found_device_ids;
   unique_json_ptr root = get_variorum_json_data();
 
   if (!root) {
-    std::cerr << "Variorum Provider: Failed to get JSON data from Variorum"
-              << std::endl;
-    return false;
+    return Result(ErrorCode::MEASUREMENT_FAILED,
+                  "Failed to get JSON data from Variorum");
   }
 
   // Parse JSON to find GPU devices
   json_t* host_obj = json_object_iter_value(json_object_iter(root.get()));
   if (!host_obj) {
-    std::cerr << "Variorum Provider: No host object found in JSON" << std::endl;
-    return false;
+    return Result(ErrorCode::MEASUREMENT_FAILED,
+                  "No host object found in JSON");
   }
 
   json_t* socket_0 = json_object_get(host_obj, "socket_0");
@@ -114,8 +123,9 @@ bool VariorumProvider::discover_devices() {
             uint32_t device_id = std::stoul(s_key.substr(4));
             found_device_ids.insert(device_id);
           } catch (const std::exception& e) {
-            std::cerr << "Variorum Provider: Could not parse GPU ID from key: "
-                      << s_key << " (" << e.what() << ")" << std::endl;
+            ENERGY_PROFILER_LOG_WARNING(
+                COMPONENT_NAME, "Could not parse GPU ID from key: " + s_key +
+                                    " (" + e.what() + ")");
           }
         }
       }
@@ -123,8 +133,7 @@ bool VariorumProvider::discover_devices() {
   }
 
   if (found_device_ids.empty()) {
-    std::cerr << "Variorum Provider: No GPU devices found" << std::endl;
-    return false;
+    return Result(ErrorCode::DEVICE_ACCESS_FAILED, "No GPU devices found");
   }
 
   // Store device information
@@ -135,27 +144,31 @@ bool VariorumProvider::discover_devices() {
     device_ids_.push_back(device_id);
     device_names_.push_back("GPU_" + std::to_string(device_id));
 
-    std::cout << "Variorum Provider: Found device " << device_ids_.size() - 1
-              << ": GPU_" << device_id << std::endl;
+    ENERGY_PROFILER_LOG_INFO(
+        COMPONENT_NAME, "Found device " +
+                            std::to_string(device_ids_.size() - 1) + ": GPU_" +
+                            std::to_string(device_id));
   }
 
   // Test initial power readings
-  std::cout << "Variorum Provider: Testing initial power readings..."
-            << std::endl;
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "Testing initial power readings...");
   std::map<uint32_t, double> test_readings = get_current_power_readings();
   for (size_t i = 0; i < device_ids_.size(); ++i) {
     uint32_t device_id = device_ids_[i];
     auto it            = test_readings.find(device_id);
     if (it != test_readings.end()) {
-      std::cout << "Variorum Provider: Device " << i
-                << ": Current power usage: " << it->second << " W" << std::endl;
+      ENERGY_PROFILER_LOG_INFO(
+          COMPONENT_NAME,
+          "Device " + std::to_string(i) +
+              ": Current power usage: " + std::to_string(it->second) + " W");
     } else {
-      std::cout << "Variorum Provider: Device " << i << ": Power reading failed"
-                << std::endl;
+      ENERGY_PROFILER_LOG_WARNING(
+          COMPONENT_NAME,
+          "Device " + std::to_string(i) + ": Power reading failed");
     }
   }
 
-  return true;
+  return Result(ErrorCode::SUCCESS);
 }
 
 void VariorumProvider::cleanup_devices() {
@@ -227,4 +240,19 @@ std::map<uint32_t, double> VariorumProvider::get_current_power_readings()
   }
 
   return readings;
+}
+
+Result VariorumProvider::validate_device_index(size_t device_index) const {
+  if (!is_initialized_) {
+    return Result(ErrorCode::PROVIDER_INIT_FAILED, "Provider not initialized");
+  }
+
+  if (device_index >= device_ids_.size()) {
+    return Result(ErrorCode::INVALID_DEVICE_INDEX,
+                  "Device index " + std::to_string(device_index) +
+                      " is out of range (0-" +
+                      std::to_string(device_ids_.size() - 1) + ")");
+  }
+
+  return Result(ErrorCode::SUCCESS);
 }

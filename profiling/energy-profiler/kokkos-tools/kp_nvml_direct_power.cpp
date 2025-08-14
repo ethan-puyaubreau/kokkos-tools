@@ -23,35 +23,36 @@
  */
 
 #include <iostream>
-#include <vector>
-#include <string>
-#include <chrono>
-#include <mutex>
-#include <iomanip>
-#include <cmath>
-#include <fstream>
 #include <memory>
+#include <cstring>
+#include <mutex>
+#include <fstream>
+#include <iomanip>
 
 #include "kp_core.hpp"
 #include "../common/daemon.hpp"
 #include "../provider/provider_nvml.hpp"
 #include "../common/filename_prefix.hpp"
-#include "../common/timer.hpp"
-#include "../tools/kernel_timer_tool.hpp"
+#include "../common/timer_system.hpp"
+#include "../common/error_handling.hpp"
 
 namespace KokkosTools {
 namespace DirectPower {
 
+using EnergyProfiler::NVMLProvider;
+using EnergyProfiler::Result;
+
 // --- Configuration ---
 // The interval in milliseconds for power sampling.
-constexpr int SAMPLING_INTERVAL_MS = 20;
+constexpr int SAMPLING_INTERVAL_MS          = 10;
+static constexpr const char* COMPONENT_NAME = "DirectPowerProfiler";
 
 // --- Global State for the Profiler ---
 static std::unique_ptr<Daemon> g_power_daemon;
 static std::unique_ptr<NVMLProvider> g_nvml_provider;
 
 // Timer tool for kernel and region timing
-static KernelTimerTool g_timer;
+static Timer::KernelTimerTool g_timer;
 
 // Structure to store a single power measurement with a timestamp per device.
 struct DirectPowerSample {
@@ -83,7 +84,14 @@ void power_monitoring_tick() {
 
   // Collect power for each device
   for (size_t i = 0; i < g_device_count; ++i) {
-    double power = g_nvml_provider->get_device_power_usage_direct(i);
+    double power  = 0.0;
+    Result result = g_nvml_provider->get_device_power_usage_direct(i, power);
+    if (!result) {
+      ENERGY_PROFILER_LOG_WARNING(
+          COMPONENT_NAME, "Failed to get direct power for device " +
+                              std::to_string(i) + ": " + result.message);
+      power = -1.0;  // Use sentinel value for missing data
+    }
     sample.device_powers_watts.push_back(power);
   }
 
@@ -195,28 +203,35 @@ void export_direct_power_data_csv(const std::string& filename) {
 void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
                           const uint32_t devInfoCount,
                           Kokkos_Profiling_KokkosPDeviceInfo* deviceInfo) {
-  std::cout << "Kokkos Direct Power Profiler: Initializing...\n";
-  std::cout << "Sampling Interval: " << SAMPLING_INTERVAL_MS << " ms\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "Initializing...");
+  ENERGY_PROFILER_LOG_INFO(
+      COMPONENT_NAME,
+      "Sampling Interval: " + std::to_string(SAMPLING_INTERVAL_MS) + " ms");
 
   // Initialize the timer tool
   g_timer.init_library(loadSeq, interfaceVer, devInfoCount, deviceInfo);
 
-  g_nvml_provider = std::make_unique<NVMLProvider>();
-  if (!g_nvml_provider->initialize()) {
-    std::cerr << "ERROR: Failed to initialize NVML provider. Direct power "
-                 "profiling disabled.\n";
+  g_nvml_provider    = std::make_unique<NVMLProvider>();
+  Result init_result = g_nvml_provider->initialize();
+  if (!init_result) {
+    ENERGY_PROFILER_LOG_ERROR(
+        COMPONENT_NAME,
+        "Failed to initialize NVML provider: " + init_result.message +
+            ". Direct power profiling disabled.");
     g_nvml_provider.reset();  // Release the provider
     return;
   }
 
   g_device_count = g_nvml_provider->get_device_count();
-  std::cout << "SUCCESS: NVML provider initialized with " << g_device_count
-            << " device(s).\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "NVML provider initialized with " +
+                                               std::to_string(g_device_count) +
+                                               " device(s)");
 
   // Print device information
   for (size_t i = 0; i < g_device_count; ++i) {
-    std::cout << "  Device " << i << ": " << g_nvml_provider->get_device_name(i)
-              << std::endl;
+    ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME,
+                             "Device " + std::to_string(i) + ": " +
+                                 g_nvml_provider->get_device_name(i));
   }
 
   // Start the monitoring daemon
@@ -224,15 +239,17 @@ void kokkosp_init_library(const int loadSeq, const uint64_t interfaceVer,
       std::make_unique<Daemon>(power_monitoring_tick, SAMPLING_INTERVAL_MS);
   g_start_time = std::chrono::high_resolution_clock::now();
   g_power_daemon->start();
-  std::cout << "SUCCESS: Direct power monitoring daemon started.\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME,
+                           "Direct power monitoring daemon started");
 }
 
 void kokkosp_finalize_library() {
-  std::cout << "\nKokkos Direct Power Profiler: Finalizing...\n";
+  ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME, "Finalizing...");
 
   if (g_power_daemon) {
     g_power_daemon->stop();
-    std::cout << "SUCCESS: Direct power monitoring daemon stopped.\n";
+    ENERGY_PROFILER_LOG_INFO(COMPONENT_NAME,
+                             "Direct power monitoring daemon stopped");
   }
 
   // Finalize the timer
