@@ -194,6 +194,29 @@ void init() {
   g_sampler_thread = std::thread(sampler_loop);
 }
 
+std::string escape_csv_field(const std::string &field) {
+  bool needs_quotes = false;
+  std::string escaped;
+  escaped.reserve(field.size() + 8);
+
+  for (char c : field) {
+    if (c == '"') {
+      needs_quotes = true;
+      escaped += "\"\"";
+    } else {
+      if (c == ',' || c == '\n' || c == '\r') {
+        needs_quotes = true;
+      }
+      escaped += c;
+    }
+  }
+
+  if (needs_quotes) {
+    return "\"" + escaped + "\"";
+  }
+  return escaped;
+}
+
 void finalize() {
   g_running = false;
   if (g_sampler_thread.joinable()) {
@@ -218,8 +241,9 @@ void finalize() {
       }
 
       for (const auto &ev : buf->finished_events) {
-        g_events_file << ev.id << "," << ev.parent_id << ",\"" << ev.name
-                      << "\"," << ev.category << "," << ev.start_ns << ","
+        g_events_file << ev.id << "," << ev.parent_id << ","
+                      << escape_csv_field(ev.name) << ","
+                      << ev.category << "," << ev.start_ns << ","
                       << ev.end_ns << "\n";
       }
       delete buf;
