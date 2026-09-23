@@ -1,3 +1,4 @@
+#include <atomic>
 #include <chrono>
 #include <climits>
 #include <cstdint>
@@ -16,7 +17,6 @@
 namespace KokkosTools::EnergyProfiler {
 
 namespace {
-std::mutex g_mutex;
 bool g_running = false;
 std::thread g_sampler_thread;
 
@@ -28,7 +28,47 @@ std::ofstream g_power_file;
 
 nvmlDevice_t g_nvml_device;
 bool g_nvml_ok = false;
-uint64_t g_next_event_id = 1;
+std::atomic<uint64_t> g_next_event_id{1};
+
+struct ActiveEvent {
+  uint64_t id;
+  uint64_t parent_id;
+  std::string name;
+  std::string category;
+  uint64_t start_ns;
+};
+
+struct FinishedEvent {
+  uint64_t id;
+  uint64_t parent_id;
+  std::string name;
+  std::string category;
+  uint64_t start_ns;
+  uint64_t end_ns;
+};
+
+struct ThreadEventBuffer {
+  std::vector<ActiveEvent> active_stack;
+  std::vector<FinishedEvent> finished_events;
+
+  ThreadEventBuffer() {
+    active_stack.reserve(64);
+    finished_events.reserve(4096);
+  }
+};
+
+std::mutex g_registry_mutex;
+std::vector<ThreadEventBuffer*> g_thread_buffers;
+thread_local ThreadEventBuffer* t_buffer = nullptr;
+
+inline ThreadEventBuffer& get_thread_buffer() {
+  if (!t_buffer) {
+    t_buffer = new ThreadEventBuffer();
+    std::lock_guard<std::mutex> lock(g_registry_mutex);
+    g_thread_buffers.push_back(t_buffer);
+  }
+  return *t_buffer;
+}
 
 inline uint64_t now_ns() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
@@ -82,7 +122,6 @@ void sampler_loop() {
       if (nvmlDeviceGetPowerUsage(g_nvml_device, &power_mw) == NVML_SUCCESS) {
         uint64_t ts = now_ns();
         double watts = static_cast<double>(power_mw) / 1000.0;
-        std::lock_guard<std::mutex> lock(g_mutex);
         if (g_power_file.is_open()) {
           g_power_file << ts << ",GPU,0," << watts << ",\n";
           g_power_file.flush();
@@ -165,47 +204,65 @@ void finalize() {
     nvmlShutdown();
   }
 
-  if (g_events_file.is_open()) g_events_file.close();
+  // Flush all buffered thread events to events.csv
+  if (g_events_file.is_open()) {
+    std::lock_guard<std::mutex> lock(g_registry_mutex);
+    for (ThreadEventBuffer *buf : g_thread_buffers) {
+      if (!buf) continue;
+      // Close any unclosed active events
+      uint64_t t_now = now_ns();
+      while (!buf->active_stack.empty()) {
+        ActiveEvent &ev = buf->active_stack.back();
+        buf->finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t_now});
+        buf->active_stack.pop_back();
+      }
+
+      for (const auto &ev : buf->finished_events) {
+        g_events_file << ev.id << "," << ev.parent_id << ",\"" << ev.name
+                      << "\"," << ev.category << "," << ev.start_ns << ","
+                      << ev.end_ns << "\n";
+      }
+      delete buf;
+    }
+    g_thread_buffers.clear();
+    g_events_file.close();
+  }
+
   if (g_power_file.is_open()) g_power_file.close();
 
   std::cout << "[kokkos-energy-profiler] Profiling complete. Traces written to: " << g_out_dir << "\n";
 }
 
-struct ActiveEvent {
-  uint64_t id;
-  uint64_t parent_id;
-  std::string name;
-  std::string category;
-  uint64_t start_ns;
-};
-
-static std::vector<ActiveEvent> g_active_stack;
-
 void push_event(const char *name, const char *cat, uint64_t *kID) {
-  std::lock_guard<std::mutex> lock(g_mutex);
-  uint64_t id = g_next_event_id++;
-  uint64_t parent_id = g_active_stack.empty() ? 0 : g_active_stack.back().id;
-  uint64_t t0 = now_ns();
-
+  uint64_t id = g_next_event_id.fetch_add(1, std::memory_order_relaxed);
   if (kID) *kID = id;
 
-  g_active_stack.push_back({id, parent_id, name ? name : "unnamed", cat, t0});
+  ThreadEventBuffer &buf = get_thread_buffer();
+  uint64_t parent_id = buf.active_stack.empty() ? 0 : buf.active_stack.back().id;
+  uint64_t t0 = now_ns();
+
+  buf.active_stack.push_back({id, parent_id, name ? name : "unnamed", cat ? cat : "", t0});
 }
 
 void pop_event(uint64_t kID) {
-  std::lock_guard<std::mutex> lock(g_mutex);
   uint64_t t1 = now_ns();
+  ThreadEventBuffer &buf = get_thread_buffer();
 
-  for (auto it = g_active_stack.rbegin(); it != g_active_stack.rend(); ++it) {
-    if (it->id == kID || kID == 0) {
-      if (g_events_file.is_open()) {
-        g_events_file << it->id << "," << it->parent_id << ",\"" << it->name
-                      << "\"," << it->category << "," << it->start_ns << ","
-                      << t1 << "\n";
-        g_events_file.flush();
-      }
+  if (buf.active_stack.empty()) return;
+
+  if (kID == 0 || buf.active_stack.back().id == kID) {
+    ActiveEvent ev = std::move(buf.active_stack.back());
+    buf.active_stack.pop_back();
+    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
+    return;
+  }
+
+  for (auto it = buf.active_stack.rbegin(); it != buf.active_stack.rend(); ++it) {
+    if (it->id == kID) {
+      ActiveEvent ev = std::move(*it);
       auto forward_it = it.base() - 1;
-      g_active_stack.erase(forward_it);
+      buf.active_stack.erase(forward_it);
+      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
       break;
     }
   }
