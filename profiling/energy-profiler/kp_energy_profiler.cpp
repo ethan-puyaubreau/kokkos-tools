@@ -17,12 +17,28 @@
 
 namespace KokkosTools::EnergyProfiler {
 
+void finalize();
+
 namespace {
 
 /**
  * @brief Flag indicating if the profiler is currently active.
  */
 std::atomic<bool> g_running{false};
+
+/**
+ * @brief Flag indicating if the profiler has been finalized.
+ */
+std::atomic<bool> g_finalized{false};
+
+/**
+ * @brief Emergency exit handler registered with std::atexit.
+ */
+void emergency_exit_handler() {
+  if (g_running.load() && !g_finalized.load()) {
+    finalize();
+  }
+}
 
 /**
  * @brief Background thread for physical telemetry sampling.
@@ -396,6 +412,8 @@ void init() {
 
   write_metadata();
 
+  std::atexit(emergency_exit_handler);
+
   g_running = true;
   g_sampler_thread = std::thread(sampler_loop);
 }
@@ -404,6 +422,11 @@ void init() {
  * @brief Stops telemetry thread, flushes buffered thread events, and closes file handles.
  */
 void finalize() {
+  bool expected = false;
+  if (!g_finalized.compare_exchange_strong(expected, true)) {
+    return;
+  }
+
   g_running = false;
   if (g_sampler_thread.joinable()) {
     g_sampler_thread.join();
