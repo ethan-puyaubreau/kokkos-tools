@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <climits>
@@ -415,22 +416,43 @@ void finalize() {
   // Flush all buffered thread events to events.csv
   if (g_events_file.is_open()) {
     std::lock_guard<std::mutex> lock(g_registry_mutex);
+    uint64_t t_now = now_ns();
+
+    // Close any unclosed active events in each buffer
+    size_t total_events = 0;
     for (ThreadEventBuffer *buf : g_thread_buffers) {
       if (!buf) continue;
-      // Close any unclosed active events
-      uint64_t t_now = now_ns();
       while (!buf->active_stack.empty()) {
         ActiveEvent &ev = buf->active_stack.back();
         buf->finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t_now});
         buf->active_stack.pop_back();
       }
+      total_events += buf->finished_events.size();
+    }
 
+    // Collect and sort all events chronologically across threads
+    std::vector<const FinishedEvent*> all_events;
+    all_events.reserve(total_events);
+    for (ThreadEventBuffer *buf : g_thread_buffers) {
+      if (!buf) continue;
       for (const auto &ev : buf->finished_events) {
-        g_events_file << ev.id << "," << ev.parent_id << ","
-                      << escape_csv_field(ev.name) << ","
-                      << ev.category << "," << ev.start_ns << ","
-                      << ev.end_ns << "\n";
+        all_events.push_back(&ev);
       }
+    }
+
+    std::stable_sort(all_events.begin(), all_events.end(),
+                     [](const FinishedEvent *a, const FinishedEvent *b) {
+                       return a->start_ns < b->start_ns;
+                     });
+
+    for (const FinishedEvent *ev : all_events) {
+      g_events_file << ev->id << "," << ev->parent_id << ","
+                    << escape_csv_field(ev->name) << ","
+                    << ev->category << "," << ev->start_ns << ","
+                    << ev->end_ns << "\n";
+    }
+
+    for (ThreadEventBuffer *buf : g_thread_buffers) {
       delete buf;
     }
     g_thread_buffers.clear();
