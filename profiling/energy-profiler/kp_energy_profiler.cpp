@@ -26,7 +26,7 @@ int g_mpi_rank = -1;
 std::ofstream g_events_file;
 std::ofstream g_power_file;
 
-nvmlDevice_t g_nvml_device;
+std::vector<nvmlDevice_t> g_nvml_devices;
 bool g_nvml_ok = false;
 std::atomic<uint64_t> g_next_event_id{1};
 
@@ -116,19 +116,25 @@ int detect_mpi_rank() {
 }
 
 void sampler_loop() {
+  const auto interval = std::chrono::milliseconds(20); // 50 Hz
+  auto next_tick = std::chrono::steady_clock::now();
+
   while (g_running) {
-    if (g_nvml_ok) {
-      unsigned int power_mw = 0;
-      if (nvmlDeviceGetPowerUsage(g_nvml_device, &power_mw) == NVML_SUCCESS) {
-        uint64_t ts = now_ns();
-        double watts = static_cast<double>(power_mw) / 1000.0;
-        if (g_power_file.is_open()) {
-          g_power_file << ts << ",GPU,0," << watts << ",\n";
-          g_power_file.flush();
+    next_tick += interval;
+
+    if (g_nvml_ok && g_power_file.is_open()) {
+      uint64_t ts = now_ns();
+      for (size_t i = 0; i < g_nvml_devices.size(); ++i) {
+        unsigned int power_mw = 0;
+        if (nvmlDeviceGetPowerUsage(g_nvml_devices[i], &power_mw) == NVML_SUCCESS) {
+          double watts = static_cast<double>(power_mw) / 1000.0;
+          g_power_file << ts << ",GPU," << i << "," << watts << ",\n";
         }
       }
+      g_power_file.flush();
     }
-    std::this_thread::sleep_for(std::chrono::milliseconds(20)); // 50 Hz
+
+    std::this_thread::sleep_until(next_tick);
   }
 }
 
@@ -182,9 +188,19 @@ void init() {
 
   // Init NVML
   if (nvmlInit() == NVML_SUCCESS) {
-    if (nvmlDeviceGetHandleByIndex(0, &g_nvml_device) == NVML_SUCCESS) {
-      g_nvml_ok = true;
-      std::cout << "[kokkos-energy-profiler] NVML initialized on GPU 0\n";
+    unsigned int dev_count = 0;
+    if (nvmlDeviceGetCount(&dev_count) == NVML_SUCCESS && dev_count > 0) {
+      for (unsigned int i = 0; i < dev_count; ++i) {
+        nvmlDevice_t dev;
+        if (nvmlDeviceGetHandleByIndex(i, &dev) == NVML_SUCCESS) {
+          g_nvml_devices.push_back(dev);
+        }
+      }
+      if (!g_nvml_devices.empty()) {
+        g_nvml_ok = true;
+        std::cout << "[kokkos-energy-profiler] NVML initialized with "
+                  << g_nvml_devices.size() << " GPU device(s)\n";
+      }
     }
   } else {
     std::cerr << "[kokkos-energy-profiler] Warning: NVML init failed, running without GPU telemetry\n";
