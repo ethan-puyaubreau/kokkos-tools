@@ -17,19 +17,55 @@
 namespace KokkosTools::EnergyProfiler {
 
 namespace {
-bool g_running = false;
+
+/**
+ * @brief Flag indicating if the profiler is currently active.
+ */
+std::atomic<bool> g_running{false};
+
+/**
+ * @brief Background thread for physical telemetry sampling.
+ */
 std::thread g_sampler_thread;
 
+/**
+ * @brief Root output directory for trace artifacts.
+ */
 std::string g_out_dir = "./";
+
+/**
+ * @brief Detected MPI rank, or -1 if not running in an MPI environment.
+ */
 int g_mpi_rank = -1;
 
+/**
+ * @brief Output stream for events.csv.
+ */
 std::ofstream g_events_file;
+
+/**
+ * @brief Output stream for power_samples.csv.
+ */
 std::ofstream g_power_file;
 
+/**
+ * @brief Handles to all available physical GPUs discovered by NVML.
+ */
 std::vector<nvmlDevice_t> g_nvml_devices;
+
+/**
+ * @brief Flag indicating if NVML was successfully initialized.
+ */
 bool g_nvml_ok = false;
+
+/**
+ * @brief Monotonically increasing unique event identifier generator.
+ */
 std::atomic<uint64_t> g_next_event_id{1};
 
+/**
+ * @brief Represents an in-flight region or parallel kernel dispatch.
+ */
 struct ActiveEvent {
   uint64_t id;
   uint64_t parent_id;
@@ -38,6 +74,9 @@ struct ActiveEvent {
   uint64_t start_ns;
 };
 
+/**
+ * @brief Represents a completed region or kernel ready for batch serialization.
+ */
 struct FinishedEvent {
   uint64_t id;
   uint64_t parent_id;
@@ -47,6 +86,9 @@ struct FinishedEvent {
   uint64_t end_ns;
 };
 
+/**
+ * @brief Per-thread event storage eliminating critical-path lock contention.
+ */
 struct ThreadEventBuffer {
   std::vector<ActiveEvent> active_stack;
   std::vector<FinishedEvent> finished_events;
@@ -57,10 +99,25 @@ struct ThreadEventBuffer {
   }
 };
 
+/**
+ * @brief Mutex protecting registration of thread-local buffers.
+ */
 std::mutex g_registry_mutex;
+
+/**
+ * @brief Master registry of all thread buffers for flush on finalization.
+ */
 std::vector<ThreadEventBuffer*> g_thread_buffers;
+
+/**
+ * @brief Pointer to the current thread's event buffer.
+ */
 thread_local ThreadEventBuffer* t_buffer = nullptr;
 
+/**
+ * @brief Retrieves or registers the thread-local event buffer.
+ * @return Reference to the current thread's ThreadEventBuffer.
+ */
 inline ThreadEventBuffer& get_thread_buffer() {
   if (!t_buffer) {
     t_buffer = new ThreadEventBuffer();
@@ -70,12 +127,20 @@ inline ThreadEventBuffer& get_thread_buffer() {
   return *t_buffer;
 }
 
+/**
+ * @brief Returns the current timestamp in nanoseconds since UNIX epoch.
+ * @return Current time in nanoseconds.
+ */
 inline uint64_t now_ns() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
 }
 
+/**
+ * @brief Discovers the local host name via gethostname.
+ * @return Current hostname string.
+ */
 std::string get_current_hostname() {
   char buf[256] = {0};
   if (gethostname(buf, sizeof(buf) - 1) == 0) {
@@ -84,6 +149,10 @@ std::string get_current_hostname() {
   return "unknown_host";
 }
 
+/**
+ * @brief Discovers the application executable basename via readlink.
+ * @return Binary name string.
+ */
 std::string get_current_app_name() {
   char buf[PATH_MAX] = {0};
   ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
@@ -95,6 +164,10 @@ std::string get_current_app_name() {
   return "kokkos_app";
 }
 
+/**
+ * @brief Discovers the MPI process rank from standard environment variables.
+ * @return Rank integer if running under MPI, or -1 otherwise.
+ */
 int detect_mpi_rank() {
   const char *rank_vars[] = {
       "OMPI_COMM_WORLD_RANK",
@@ -115,6 +188,27 @@ int detect_mpi_rank() {
   return -1;
 }
 
+/**
+ * @brief Discovers active execution backend.
+ * @return String representation of active backend.
+ */
+std::string detect_backend() {
+  const char *backend_env = std::getenv("KOKKOS_BACKEND");
+  if (backend_env && *backend_env) {
+    return std::string(backend_env);
+  }
+  if (g_nvml_ok && !g_nvml_devices.empty()) {
+    return "CUDA";
+  }
+  if (std::getenv("OMP_NUM_THREADS") || std::getenv("OMP_PROC_BIND")) {
+    return "OPENMP";
+  }
+  return "HOST";
+}
+
+/**
+ * @brief Telemetry sampling loop capturing physical GPU power without cumulative drift.
+ */
 void sampler_loop() {
   const auto interval = std::chrono::milliseconds(20); // 50 Hz
   auto next_tick = std::chrono::steady_clock::now();
@@ -138,20 +232,9 @@ void sampler_loop() {
   }
 }
 
-std::string detect_backend() {
-  const char *backend_env = std::getenv("KOKKOS_BACKEND");
-  if (backend_env && *backend_env) {
-    return std::string(backend_env);
-  }
-  if (g_nvml_ok && !g_nvml_devices.empty()) {
-    return "CUDA";
-  }
-  if (std::getenv("OMP_NUM_THREADS") || std::getenv("OMP_PROC_BIND")) {
-    return "OPENMP";
-  }
-  return "HOST";
-}
-
+/**
+ * @brief Writes session metadata JSON according to V1 specification.
+ */
 void write_metadata() {
   std::ofstream meta(g_out_dir + "/metadata.json");
   if (meta.is_open()) {
@@ -169,8 +252,88 @@ void write_metadata() {
   }
 }
 
+/**
+ * @brief Escapes quotes and commas in strings according to RFC 4180 CSV standard.
+ * @param field Raw input field string.
+ * @return Escaped string safe for CSV serialization.
+ */
+std::string escape_csv_field(const std::string &field) {
+  bool needs_quotes = false;
+  std::string escaped;
+  escaped.reserve(field.size() + 8);
+
+  for (char c : field) {
+    if (c == '"') {
+      needs_quotes = true;
+      escaped += "\"\"";
+    } else {
+      if (c == ',' || c == '\n' || c == '\r') {
+        needs_quotes = true;
+      }
+      escaped += c;
+    }
+  }
+
+  if (needs_quotes) {
+    return "\"" + escaped + "\"";
+  }
+  return escaped;
+}
+
 } // namespace
 
+/**
+ * @brief Records entering a region or kernel into thread-local buffer.
+ * @param name Event label or kernel name.
+ * @param cat Event category (e.g. USER_REGION, PARALLEL_FOR).
+ * @param kID Pointer to receive generated unique kernel ID.
+ */
+void push_event(const char *name, const char *cat, uint64_t *kID) {
+  if (!g_running) return;
+
+  uint64_t id = g_next_event_id.fetch_add(1, std::memory_order_relaxed);
+  if (kID) *kID = id;
+
+  ThreadEventBuffer &buf = get_thread_buffer();
+  uint64_t parent_id = buf.active_stack.empty() ? 0 : buf.active_stack.back().id;
+  uint64_t t0 = now_ns();
+
+  buf.active_stack.push_back({id, parent_id, name ? name : "unnamed", cat ? cat : "", t0});
+}
+
+/**
+ * @brief Records leaving a region or kernel and moves it to finished buffer.
+ * @param kID Target kernel ID to close, or 0 for top of stack.
+ */
+void pop_event(uint64_t kID) {
+  if (!g_running) return;
+
+  uint64_t t1 = now_ns();
+  ThreadEventBuffer &buf = get_thread_buffer();
+
+  if (buf.active_stack.empty()) return;
+
+  if (kID == 0 || buf.active_stack.back().id == kID) {
+    ActiveEvent ev = std::move(buf.active_stack.back());
+    buf.active_stack.pop_back();
+    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
+    return;
+  }
+
+  for (auto it = buf.active_stack.rbegin(); it != buf.active_stack.rend(); ++it) {
+    if (it->id == kID) {
+      ActiveEvent ev = std::move(*it);
+      auto forward_it = it.base() - 1;
+      buf.active_stack.erase(forward_it);
+      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
+      break;
+    }
+  }
+}
+
+/**
+ * @brief Initializes output paths, streams, NVML devices, and sampling thread.
+ */
 void init() {
   const char *out_env = std::getenv("KOKKOS_TOOLS_OUTPUT_PATH");
   if (out_env && *out_env) {
@@ -225,29 +388,9 @@ void init() {
   g_sampler_thread = std::thread(sampler_loop);
 }
 
-std::string escape_csv_field(const std::string &field) {
-  bool needs_quotes = false;
-  std::string escaped;
-  escaped.reserve(field.size() + 8);
-
-  for (char c : field) {
-    if (c == '"') {
-      needs_quotes = true;
-      escaped += "\"\"";
-    } else {
-      if (c == ',' || c == '\n' || c == '\r') {
-        needs_quotes = true;
-      }
-      escaped += c;
-    }
-  }
-
-  if (needs_quotes) {
-    return "\"" + escaped + "\"";
-  }
-  return escaped;
-}
-
+/**
+ * @brief Stops telemetry thread, flushes buffered thread events, and closes file handles.
+ */
 void finalize() {
   g_running = false;
   if (g_sampler_thread.joinable()) {
@@ -283,44 +426,12 @@ void finalize() {
     g_events_file.close();
   }
 
-  if (g_power_file.is_open()) g_power_file.close();
+  if (g_power_file.is_open()) {
+    g_power_file.flush();
+    g_power_file.close();
+  }
 
   std::cout << "[kokkos-energy-profiler] Profiling complete. Traces written to: " << g_out_dir << "\n";
-}
-
-void push_event(const char *name, const char *cat, uint64_t *kID) {
-  uint64_t id = g_next_event_id.fetch_add(1, std::memory_order_relaxed);
-  if (kID) *kID = id;
-
-  ThreadEventBuffer &buf = get_thread_buffer();
-  uint64_t parent_id = buf.active_stack.empty() ? 0 : buf.active_stack.back().id;
-  uint64_t t0 = now_ns();
-
-  buf.active_stack.push_back({id, parent_id, name ? name : "unnamed", cat ? cat : "", t0});
-}
-
-void pop_event(uint64_t kID) {
-  uint64_t t1 = now_ns();
-  ThreadEventBuffer &buf = get_thread_buffer();
-
-  if (buf.active_stack.empty()) return;
-
-  if (kID == 0 || buf.active_stack.back().id == kID) {
-    ActiveEvent ev = std::move(buf.active_stack.back());
-    buf.active_stack.pop_back();
-    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
-    return;
-  }
-
-  for (auto it = buf.active_stack.rbegin(); it != buf.active_stack.rend(); ++it) {
-    if (it->id == kID) {
-      ActiveEvent ev = std::move(*it);
-      auto forward_it = it.base() - 1;
-      buf.active_stack.erase(forward_it);
-      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
-      break;
-    }
-  }
 }
 
 } // namespace KokkosTools::EnergyProfiler
@@ -328,42 +439,85 @@ void pop_event(uint64_t kID) {
 // C Interface expected by KokkosP runtime
 extern "C" {
 
+/**
+ * @brief KokkosP initialization callback.
+ */
 void kokkosp_init_library(const int, const uint64_t, const uint32_t, void*) {
   KokkosTools::EnergyProfiler::init();
 }
 
+/**
+ * @brief KokkosP finalization callback.
+ */
 void kokkosp_finalize_library() {
   KokkosTools::EnergyProfiler::finalize();
 }
 
+/**
+ * @brief KokkosP push user region callback.
+ * @param name Region name label.
+ */
 void kokkosp_push_profile_region(const char *name) {
   KokkosTools::EnergyProfiler::push_event(name, "USER_REGION", nullptr);
 }
 
+/**
+ * @brief KokkosP pop user region callback.
+ */
 void kokkosp_pop_profile_region() {
   KokkosTools::EnergyProfiler::pop_event(0);
 }
 
+/**
+ * @brief KokkosP begin parallel_for callback.
+ * @param name Kernel name label.
+ * @param devID Device identifier.
+ * @param kID Pointer to receive kernel ID.
+ */
 void kokkosp_begin_parallel_for(const char *name, uint32_t, uint64_t *kID) {
   KokkosTools::EnergyProfiler::push_event(name, "PARALLEL_FOR", kID);
 }
 
+/**
+ * @brief KokkosP end parallel_for callback.
+ * @param kID Kernel ID returned during begin callback.
+ */
 void kokkosp_end_parallel_for(uint64_t kID) {
   KokkosTools::EnergyProfiler::pop_event(kID);
 }
 
+/**
+ * @brief KokkosP begin parallel_reduce callback.
+ * @param name Kernel name label.
+ * @param devID Device identifier.
+ * @param kID Pointer to receive kernel ID.
+ */
 void kokkosp_begin_parallel_reduce(const char *name, uint32_t, uint64_t *kID) {
   KokkosTools::EnergyProfiler::push_event(name, "PARALLEL_REDUCE", kID);
 }
 
+/**
+ * @brief KokkosP end parallel_reduce callback.
+ * @param kID Kernel ID returned during begin callback.
+ */
 void kokkosp_end_parallel_reduce(uint64_t kID) {
   KokkosTools::EnergyProfiler::pop_event(kID);
 }
 
+/**
+ * @brief KokkosP begin parallel_scan callback.
+ * @param name Kernel name label.
+ * @param devID Device identifier.
+ * @param kID Pointer to receive kernel ID.
+ */
 void kokkosp_begin_parallel_scan(const char *name, uint32_t, uint64_t *kID) {
   KokkosTools::EnergyProfiler::push_event(name, "PARALLEL_SCAN", kID);
 }
 
+/**
+ * @brief KokkosP end parallel_scan callback.
+ * @param kID Kernel ID returned during begin callback.
+ */
 void kokkosp_end_parallel_scan(uint64_t kID) {
   KokkosTools::EnergyProfiler::pop_event(kID);
 }
