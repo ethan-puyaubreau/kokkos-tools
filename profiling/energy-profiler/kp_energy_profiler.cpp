@@ -71,7 +71,7 @@ struct ActiveEvent {
   uint64_t id;
   uint64_t parent_id;
   std::string name;
-  std::string category;
+  const char *category;
   uint64_t start_ns;
 };
 
@@ -82,7 +82,7 @@ struct FinishedEvent {
   uint64_t id;
   uint64_t parent_id;
   std::string name;
-  std::string category;
+  const char *category;
   uint64_t start_ns;
   uint64_t end_ns;
 };
@@ -328,7 +328,7 @@ void pop_event(uint64_t kID) {
   if (kID == 0 || buf.active_stack.back().id == kID) {
     ActiveEvent ev = std::move(buf.active_stack.back());
     buf.active_stack.pop_back();
-    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
+    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), ev.category, ev.start_ns, t1});
     return;
   }
 
@@ -337,7 +337,7 @@ void pop_event(uint64_t kID) {
       ActiveEvent ev = std::move(*it);
       auto forward_it = it.base() - 1;
       buf.active_stack.erase(forward_it);
-      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t1});
+      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), ev.category, ev.start_ns, t1});
       break;
     }
   }
@@ -424,7 +424,7 @@ void finalize() {
       if (!buf) continue;
       while (!buf->active_stack.empty()) {
         ActiveEvent &ev = buf->active_stack.back();
-        buf->finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), std::move(ev.category), ev.start_ns, t_now});
+        buf->finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), ev.category, ev.start_ns, t_now});
         buf->active_stack.pop_back();
       }
       total_events += buf->finished_events.size();
