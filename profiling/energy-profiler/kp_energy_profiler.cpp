@@ -128,13 +128,24 @@ inline ThreadEventBuffer& get_thread_buffer() {
 }
 
 /**
- * @brief Returns the current timestamp in nanoseconds since UNIX epoch.
- * @return Current time in nanoseconds.
+ * @brief System clock epoch baseline in nanoseconds.
+ */
+static const uint64_t g_epoch_system_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+    std::chrono::system_clock::now().time_since_epoch()).count();
+
+/**
+ * @brief Monotonic steady clock baseline at initialization.
+ */
+static const auto g_epoch_steady = std::chrono::steady_clock::now();
+
+/**
+ * @brief Returns the current timestamp in nanoseconds since UNIX epoch with guaranteed monotonicity.
+ * @return Monotonically increasing time in nanoseconds.
  */
 inline uint64_t now_ns() {
-  return std::chrono::duration_cast<std::chrono::nanoseconds>(
-             std::chrono::system_clock::now().time_since_epoch())
-      .count();
+  auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::steady_clock::now() - g_epoch_steady).count();
+  return g_epoch_system_ns + static_cast<uint64_t>(elapsed);
 }
 
 /**
