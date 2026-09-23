@@ -1,7 +1,9 @@
 #include <chrono>
+#include <climits>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <mutex>
@@ -9,8 +11,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-#include <climits>
 #include <unistd.h>
 
 namespace KokkosTools::EnergyProfiler {
@@ -21,6 +21,7 @@ bool g_running = false;
 std::thread g_sampler_thread;
 
 std::string g_out_dir = "./";
+int g_mpi_rank = -1;
 
 std::ofstream g_events_file;
 std::ofstream g_power_file;
@@ -54,6 +55,26 @@ std::string get_current_app_name() {
   return "kokkos_app";
 }
 
+int detect_mpi_rank() {
+  const char *rank_vars[] = {
+      "OMPI_COMM_WORLD_RANK",
+      "PMI_RANK",
+      "MV2_COMM_WORLD_RANK",
+      "SLURM_PROCID",
+  };
+  for (const char *var : rank_vars) {
+    const char *val = std::getenv(var);
+    if (val && *val) {
+      try {
+        return std::stoi(val);
+      } catch (...) {
+        return -1;
+      }
+    }
+  }
+  return -1;
+}
+
 void sampler_loop() {
   while (g_running) {
     if (g_nvml_ok) {
@@ -80,8 +101,11 @@ void write_metadata() {
          << "  \"app_name\": \"" << get_current_app_name() << "\",\n"
          << "  \"hostname\": \"" << get_current_hostname() << "\",\n"
          << "  \"kokkos_backend\": \"CUDA\",\n"
-         << "  \"start_epoch_ns\": " << now_ns() << "\n"
-         << "}\n";
+         << "  \"start_epoch_ns\": " << now_ns();
+    if (g_mpi_rank >= 0) {
+      meta << ",\n  \"mpi_rank\": " << g_mpi_rank;
+    }
+    meta << "\n}\n";
   }
 }
 
@@ -89,7 +113,21 @@ void write_metadata() {
 
 void init() {
   const char *out_env = std::getenv("KOKKOS_TOOLS_OUTPUT_PATH");
-  if (out_env) g_out_dir = out_env;
+  if (out_env && *out_env) {
+    g_out_dir = out_env;
+  }
+
+  g_mpi_rank = detect_mpi_rank();
+  if (g_mpi_rank >= 0) {
+    g_out_dir = (std::filesystem::path(g_out_dir) / ("rank_" + std::to_string(g_mpi_rank))).string();
+  }
+
+  std::error_code ec;
+  std::filesystem::create_directories(g_out_dir, ec);
+  if (ec) {
+    std::cerr << "[kokkos-energy-profiler] Error creating output directory "
+              << g_out_dir << ": " << ec.message() << "\n";
+  }
 
   g_events_file.open(g_out_dir + "/events.csv");
   g_power_file.open(g_out_dir + "/power_samples.csv");
