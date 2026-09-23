@@ -138,6 +138,20 @@ void sampler_loop() {
   }
 }
 
+std::string detect_backend() {
+  const char *backend_env = std::getenv("KOKKOS_BACKEND");
+  if (backend_env && *backend_env) {
+    return std::string(backend_env);
+  }
+  if (g_nvml_ok && !g_nvml_devices.empty()) {
+    return "CUDA";
+  }
+  if (std::getenv("OMP_NUM_THREADS") || std::getenv("OMP_PROC_BIND")) {
+    return "OPENMP";
+  }
+  return "HOST";
+}
+
 void write_metadata() {
   std::ofstream meta(g_out_dir + "/metadata.json");
   if (meta.is_open()) {
@@ -145,7 +159,8 @@ void write_metadata() {
          << "  \"spec_version\": \"1.0\",\n"
          << "  \"app_name\": \"" << get_current_app_name() << "\",\n"
          << "  \"hostname\": \"" << get_current_hostname() << "\",\n"
-         << "  \"kokkos_backend\": \"CUDA\",\n"
+         << "  \"kokkos_backend\": \"" << detect_backend() << "\",\n"
+         << "  \"device_count\": " << g_nvml_devices.size() << ",\n"
          << "  \"start_epoch_ns\": " << now_ns();
     if (g_mpi_rank >= 0) {
       meta << ",\n  \"mpi_rank\": " << g_mpi_rank;
@@ -184,9 +199,7 @@ void init() {
     g_power_file << "timestamp_ns,domain,device_id,power_watts,energy_joules\n";
   }
 
-  write_metadata();
-
-  // Init NVML
+  // Init NVML before generating metadata
   if (nvmlInit() == NVML_SUCCESS) {
     unsigned int dev_count = 0;
     if (nvmlDeviceGetCount(&dev_count) == NVML_SUCCESS && dev_count > 0) {
@@ -205,6 +218,8 @@ void init() {
   } else {
     std::cerr << "[kokkos-energy-profiler] Warning: NVML init failed, running without GPU telemetry\n";
   }
+
+  write_metadata();
 
   g_running = true;
   g_sampler_thread = std::thread(sampler_loop);
