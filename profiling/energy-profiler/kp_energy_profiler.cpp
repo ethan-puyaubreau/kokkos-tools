@@ -10,6 +10,9 @@
 #include <thread>
 #include <vector>
 
+#include <climits>
+#include <unistd.h>
+
 namespace KokkosTools::EnergyProfiler {
 
 namespace {
@@ -30,6 +33,25 @@ inline uint64_t now_ns() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::system_clock::now().time_since_epoch())
       .count();
+}
+
+std::string get_current_hostname() {
+  char buf[256] = {0};
+  if (gethostname(buf, sizeof(buf) - 1) == 0) {
+    return std::string(buf);
+  }
+  return "unknown_host";
+}
+
+std::string get_current_app_name() {
+  char buf[PATH_MAX] = {0};
+  ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (len > 0) {
+    std::string path(buf, len);
+    auto pos = path.find_last_of('/');
+    return (pos != std::string::npos) ? path.substr(pos + 1) : path;
+  }
+  return "kokkos_app";
 }
 
 void sampler_loop() {
@@ -55,8 +77,8 @@ void write_metadata() {
   if (meta.is_open()) {
     meta << "{\n"
          << "  \"spec_version\": \"1.0\",\n"
-         << "  \"app_name\": \"energy_bench\",\n"
-         << "  \"hostname\": \"wsl-rtx3080ti\",\n"
+         << "  \"app_name\": \"" << get_current_app_name() << "\",\n"
+         << "  \"hostname\": \"" << get_current_hostname() << "\",\n"
          << "  \"kokkos_backend\": \"CUDA\",\n"
          << "  \"start_epoch_ns\": " << now_ns() << "\n"
          << "}\n";
