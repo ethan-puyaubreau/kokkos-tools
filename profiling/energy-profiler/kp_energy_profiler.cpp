@@ -533,4 +533,39 @@ void kokkosp_end_parallel_scan(uint64_t kID) {
   KokkosTools::EnergyProfiler::pop_event(kID);
 }
 
+struct Kokkos_Profiling_SpaceHandle {
+  char name[64];
+};
+
+/**
+ * @brief KokkosP begin deep copy callback for data transfers.
+ * @param dst_handle Destination memory space handle.
+ * @param dst_name Destination label.
+ * @param dst_ptr Destination data pointer.
+ * @param src_handle Source memory space handle.
+ * @param src_name Source label.
+ * @param src_ptr Source data pointer.
+ * @param size Transfer size in bytes.
+ */
+void kokkosp_begin_deep_copy(
+    struct Kokkos_Profiling_SpaceHandle dst_handle, const char* dst_name, const void*,
+    struct Kokkos_Profiling_SpaceHandle src_handle, const char* src_name, const void*,
+    uint64_t size) {
+  std::string label = "deep_copy [";
+  label += (src_name && *src_name) ? src_name : src_handle.name;
+  label += " -> ";
+  label += (dst_name && *dst_name) ? dst_name : dst_handle.name;
+  label += "] (";
+  label += std::to_string(size);
+  label += " B)";
+  KokkosTools::EnergyProfiler::push_event(label.c_str(), "DEEP_COPY", nullptr);
+}
+
+/**
+ * @brief KokkosP end deep copy callback.
+ */
+void kokkosp_end_deep_copy() {
+  KokkosTools::EnergyProfiler::pop_event(0);
+}
+
 } // extern "C"
