@@ -33,4 +33,5 @@ export KOKKOS_TOOLS_OUTPUT_PATH=./my_trace
 ./my_kokkos_app
 ```
 
-The resulting trace directory can then be analyzed using `kokkos-energy`.
+The resulting trace directory can then be analyzed with
+[energy-dashboard-for-kokkos](https://github.com/ethan-puyaubreau/energy-dashboard-for-kokkos).
