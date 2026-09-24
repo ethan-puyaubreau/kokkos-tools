@@ -250,7 +250,7 @@ void sampler_loop() {
         unsigned int power_mw = 0;
         if (nvmlDeviceGetPowerUsage(g_nvml_devices[i], &power_mw) == NVML_SUCCESS) {
           double watts = static_cast<double>(power_mw) / 1000.0;
-          g_power_file << ts << ",GPU," << i << "," << watts << ",\n";
+          g_power_file << ts << ",GPU," << i << "," << watts << "\n";
         }
       }
       g_power_file.flush();
@@ -387,7 +387,7 @@ void init() {
     g_events_file << "id,parent_id,name,category,start_ns,end_ns\n";
   }
   if (g_power_file.is_open()) {
-    g_power_file << "timestamp_ns,domain,device_id,power_watts,energy_joules\n";
+    g_power_file << "timestamp_ns,domain,device_id,power_watts\n";
   }
 
   // Init NVML before generating metadata
