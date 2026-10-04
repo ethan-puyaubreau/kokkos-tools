@@ -12,7 +12,8 @@ typedef struct nvmlDevice_st *nvmlDevice_t;
 nvmlReturn_t nvmlInit(void);
 nvmlReturn_t nvmlShutdown(void);
 nvmlReturn_t nvmlDeviceGetCount(unsigned int *count);
-nvmlReturn_t nvmlDeviceGetHandleByIndex(unsigned int index, nvmlDevice_t *device);
+nvmlReturn_t nvmlDeviceGetHandleByIndex(unsigned int index,
+                                        nvmlDevice_t *device);
 nvmlReturn_t nvmlDeviceGetPowerUsage(nvmlDevice_t device, unsigned int *power);
 
 #ifdef __cplusplus

@@ -28,11 +28,14 @@ int main(int argc, char **argv) {
     std::fprintf(stderr, "%s\n", dlerror());
     return 1;
   }
-  auto init = symbol<void (*)(int, uint64_t, uint32_t, void *)>(lib, "kokkosp_init_library");
+  auto init = symbol<void (*)(int, uint64_t, uint32_t, void *)>(
+      lib, "kokkosp_init_library");
   auto finalize = symbol<void (*)()>(lib, "kokkosp_finalize_library");
-  auto push = symbol<void (*)(const char *)>(lib, "kokkosp_push_profile_region");
-  auto pop = symbol<void (*)()>(lib, "kokkosp_pop_profile_region");
-  auto begin_for = symbol<void (*)(const char *, uint32_t, uint64_t *)>(lib, "kokkosp_begin_parallel_for");
+  auto push =
+      symbol<void (*)(const char *)>(lib, "kokkosp_push_profile_region");
+  auto pop       = symbol<void (*)()>(lib, "kokkosp_pop_profile_region");
+  auto begin_for = symbol<void (*)(const char *, uint32_t, uint64_t *)>(
+      lib, "kokkosp_begin_parallel_for");
   auto end_for = symbol<void (*)(uint64_t)>(lib, "kokkosp_end_parallel_for");
 
   using namespace std::chrono_literals;

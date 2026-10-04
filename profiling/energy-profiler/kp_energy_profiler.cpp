@@ -124,18 +124,18 @@ std::mutex g_registry_mutex;
 /**
  * @brief Master registry of all thread buffers for flush on finalization.
  */
-std::vector<ThreadEventBuffer*> g_thread_buffers;
+std::vector<ThreadEventBuffer *> g_thread_buffers;
 
 /**
  * @brief Pointer to the current thread's event buffer.
  */
-thread_local ThreadEventBuffer* t_buffer = nullptr;
+thread_local ThreadEventBuffer *t_buffer = nullptr;
 
 /**
  * @brief Retrieves or registers the thread-local event buffer.
  * @return Reference to the current thread's ThreadEventBuffer.
  */
-inline ThreadEventBuffer& get_thread_buffer() {
+inline ThreadEventBuffer &get_thread_buffer() {
   if (!t_buffer) {
     t_buffer = new ThreadEventBuffer();
     std::lock_guard<std::mutex> lock(g_registry_mutex);
@@ -147,8 +147,10 @@ inline ThreadEventBuffer& get_thread_buffer() {
 /**
  * @brief System clock epoch baseline in nanoseconds.
  */
-static const uint64_t g_epoch_system_ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
-    std::chrono::system_clock::now().time_since_epoch()).count();
+static const uint64_t g_epoch_system_ns =
+    std::chrono::duration_cast<std::chrono::nanoseconds>(
+        std::chrono::system_clock::now().time_since_epoch())
+        .count();
 
 /**
  * @brief Monotonic steady clock baseline at initialization.
@@ -156,12 +158,14 @@ static const uint64_t g_epoch_system_ns = std::chrono::duration_cast<std::chrono
 static const auto g_epoch_steady = std::chrono::steady_clock::now();
 
 /**
- * @brief Returns the current timestamp in nanoseconds since UNIX epoch with guaranteed monotonicity.
+ * @brief Returns the current timestamp in nanoseconds since UNIX epoch with
+ * guaranteed monotonicity.
  * @return Monotonically increasing time in nanoseconds.
  */
 inline uint64_t now_ns() {
   auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(
-      std::chrono::steady_clock::now() - g_epoch_steady).count();
+                     std::chrono::steady_clock::now() - g_epoch_steady)
+                     .count();
   return g_epoch_system_ns + static_cast<uint64_t>(elapsed);
 }
 
@@ -183,7 +187,7 @@ std::string get_current_hostname() {
  */
 std::string get_current_app_name() {
   char buf[PATH_MAX] = {0};
-  ssize_t len = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  ssize_t len        = readlink("/proc/self/exe", buf, sizeof(buf) - 1);
   if (len > 0) {
     std::string path(buf, len);
     auto pos = path.find_last_of('/');
@@ -235,11 +239,12 @@ std::string detect_backend() {
 }
 
 /**
- * @brief Telemetry sampling loop capturing physical GPU power without cumulative drift.
+ * @brief Telemetry sampling loop capturing physical GPU power without
+ * cumulative drift.
  */
 void sampler_loop() {
-  const auto interval = std::chrono::milliseconds(20); // 50 Hz
-  auto next_tick = std::chrono::steady_clock::now();
+  const auto interval = std::chrono::milliseconds(20);  // 50 Hz
+  auto next_tick      = std::chrono::steady_clock::now();
 
   while (g_running) {
     next_tick += interval;
@@ -248,7 +253,8 @@ void sampler_loop() {
       uint64_t ts = now_ns();
       for (size_t i = 0; i < g_nvml_devices.size(); ++i) {
         unsigned int power_mw = 0;
-        if (nvmlDeviceGetPowerUsage(g_nvml_devices[i], &power_mw) == NVML_SUCCESS) {
+        if (nvmlDeviceGetPowerUsage(g_nvml_devices[i], &power_mw) ==
+            NVML_SUCCESS) {
           double watts = static_cast<double>(power_mw) / 1000.0;
           g_power_file << ts << ",GPU," << i << "," << watts << "\n";
         }
@@ -281,7 +287,8 @@ void write_metadata() {
 }
 
 /**
- * @brief Escapes quotes and commas in strings according to RFC 4180 CSV standard.
+ * @brief Escapes quotes and commas in strings according to RFC 4180 CSV
+ * standard.
  * @param field Raw input field string.
  * @return Escaped string safe for CSV serialization.
  */
@@ -308,7 +315,7 @@ std::string escape_csv_field(const std::string &field) {
   return escaped;
 }
 
-} // namespace
+}  // namespace
 
 /**
  * @brief Records entering a region or kernel into thread-local buffer.
@@ -323,10 +330,12 @@ void push_event(const char *name, const char *cat, uint64_t *kID) {
   if (kID) *kID = id;
 
   ThreadEventBuffer &buf = get_thread_buffer();
-  uint64_t parent_id = buf.active_stack.empty() ? 0 : buf.active_stack.back().id;
+  uint64_t parent_id =
+      buf.active_stack.empty() ? 0 : buf.active_stack.back().id;
   uint64_t t0 = now_ns();
 
-  buf.active_stack.push_back({id, parent_id, name ? name : "unnamed", cat ? cat : "", t0});
+  buf.active_stack.push_back(
+      {id, parent_id, name ? name : "unnamed", cat ? cat : "", t0});
 }
 
 /**
@@ -336,7 +345,7 @@ void push_event(const char *name, const char *cat, uint64_t *kID) {
 void pop_event(uint64_t kID) {
   if (!g_running) return;
 
-  uint64_t t1 = now_ns();
+  uint64_t t1            = now_ns();
   ThreadEventBuffer &buf = get_thread_buffer();
 
   if (buf.active_stack.empty()) return;
@@ -344,16 +353,19 @@ void pop_event(uint64_t kID) {
   if (kID == 0 || buf.active_stack.back().id == kID) {
     ActiveEvent ev = std::move(buf.active_stack.back());
     buf.active_stack.pop_back();
-    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), ev.category, ev.start_ns, t1});
+    buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name),
+                                   ev.category, ev.start_ns, t1});
     return;
   }
 
-  for (auto it = buf.active_stack.rbegin(); it != buf.active_stack.rend(); ++it) {
+  for (auto it = buf.active_stack.rbegin(); it != buf.active_stack.rend();
+       ++it) {
     if (it->id == kID) {
-      ActiveEvent ev = std::move(*it);
+      ActiveEvent ev  = std::move(*it);
       auto forward_it = it.base() - 1;
       buf.active_stack.erase(forward_it);
-      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), ev.category, ev.start_ns, t1});
+      buf.finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name),
+                                     ev.category, ev.start_ns, t1});
       break;
     }
   }
@@ -370,7 +382,9 @@ void init() {
 
   g_mpi_rank = detect_mpi_rank();
   if (g_mpi_rank >= 0) {
-    g_out_dir = (std::filesystem::path(g_out_dir) / ("rank_" + std::to_string(g_mpi_rank))).string();
+    g_out_dir = (std::filesystem::path(g_out_dir) /
+                 ("rank_" + std::to_string(g_mpi_rank)))
+                    .string();
   }
 
   std::error_code ec;
@@ -407,19 +421,21 @@ void init() {
       }
     }
   } else {
-    std::cerr << "[kokkos-energy-profiler] Warning: NVML init failed, running without GPU telemetry\n";
+    std::cerr << "[kokkos-energy-profiler] Warning: NVML init failed, running "
+                 "without GPU telemetry\n";
   }
 
   write_metadata();
 
   std::atexit(emergency_exit_handler);
 
-  g_running = true;
+  g_running        = true;
   g_sampler_thread = std::thread(sampler_loop);
 }
 
 /**
- * @brief Stops telemetry thread, flushes buffered thread events, and closes file handles.
+ * @brief Stops telemetry thread, flushes buffered thread events, and closes
+ * file handles.
  */
 void finalize() {
   bool expected = false;
@@ -447,14 +463,15 @@ void finalize() {
       if (!buf) continue;
       while (!buf->active_stack.empty()) {
         ActiveEvent &ev = buf->active_stack.back();
-        buf->finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name), ev.category, ev.start_ns, t_now});
+        buf->finished_events.push_back({ev.id, ev.parent_id, std::move(ev.name),
+                                        ev.category, ev.start_ns, t_now});
         buf->active_stack.pop_back();
       }
       total_events += buf->finished_events.size();
     }
 
     // Collect and sort all events chronologically across threads
-    std::vector<const FinishedEvent*> all_events;
+    std::vector<const FinishedEvent *> all_events;
     all_events.reserve(total_events);
     for (ThreadEventBuffer *buf : g_thread_buffers) {
       if (!buf) continue;
@@ -470,9 +487,8 @@ void finalize() {
 
     for (const FinishedEvent *ev : all_events) {
       g_events_file << ev->id << "," << ev->parent_id << ","
-                    << escape_csv_field(ev->name) << ","
-                    << ev->category << "," << ev->start_ns << ","
-                    << ev->end_ns << "\n";
+                    << escape_csv_field(ev->name) << "," << ev->category << ","
+                    << ev->start_ns << "," << ev->end_ns << "\n";
     }
 
     for (ThreadEventBuffer *buf : g_thread_buffers) {
@@ -487,10 +503,12 @@ void finalize() {
     g_power_file.close();
   }
 
-  std::cout << "[kokkos-energy-profiler] Profiling complete. Traces written to: " << g_out_dir << "\n";
+  std::cout
+      << "[kokkos-energy-profiler] Profiling complete. Traces written to: "
+      << g_out_dir << "\n";
 }
 
-} // namespace KokkosTools::EnergyProfiler
+}  // namespace KokkosTools::EnergyProfiler
 
 // C Interface expected by KokkosP runtime
 extern "C" {
@@ -498,16 +516,14 @@ extern "C" {
 /**
  * @brief KokkosP initialization callback.
  */
-void kokkosp_init_library(const int, const uint64_t, const uint32_t, void*) {
+void kokkosp_init_library(const int, const uint64_t, const uint32_t, void *) {
   KokkosTools::EnergyProfiler::init();
 }
 
 /**
  * @brief KokkosP finalization callback.
  */
-void kokkosp_finalize_library() {
-  KokkosTools::EnergyProfiler::finalize();
-}
+void kokkosp_finalize_library() { KokkosTools::EnergyProfiler::finalize(); }
 
 /**
  * @brief KokkosP push user region callback.
@@ -520,9 +536,7 @@ void kokkosp_push_profile_region(const char *name) {
 /**
  * @brief KokkosP pop user region callback.
  */
-void kokkosp_pop_profile_region() {
-  KokkosTools::EnergyProfiler::pop_event(0);
-}
+void kokkosp_pop_profile_region() { KokkosTools::EnergyProfiler::pop_event(0); }
 
 /**
  * @brief KokkosP begin parallel_for callback.
@@ -592,10 +606,11 @@ struct Kokkos_Profiling_SpaceHandle {
  * @param src_ptr Source data pointer.
  * @param size Transfer size in bytes.
  */
-void kokkosp_begin_deep_copy(
-    struct Kokkos_Profiling_SpaceHandle dst_handle, const char* dst_name, const void*,
-    struct Kokkos_Profiling_SpaceHandle src_handle, const char* src_name, const void*,
-    uint64_t size) {
+void kokkosp_begin_deep_copy(struct Kokkos_Profiling_SpaceHandle dst_handle,
+                             const char *dst_name, const void *,
+                             struct Kokkos_Profiling_SpaceHandle src_handle,
+                             const char *src_name, const void *,
+                             uint64_t size) {
   std::string label = "deep_copy [";
   label += (src_name && *src_name) ? src_name : src_handle.name;
   label += " -> ";
@@ -609,8 +624,6 @@ void kokkosp_begin_deep_copy(
 /**
  * @brief KokkosP end deep copy callback.
  */
-void kokkosp_end_deep_copy() {
-  KokkosTools::EnergyProfiler::pop_event(0);
-}
+void kokkosp_end_deep_copy() { KokkosTools::EnergyProfiler::pop_event(0); }
 
-} // extern "C"
+}  // extern "C"
